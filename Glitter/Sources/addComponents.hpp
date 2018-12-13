@@ -4,13 +4,16 @@
 #include <glad/glad.h>
 #include <btBulletDynamicsCommon.h>
 #include "Model.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 class AddComponents {
 public:
 	//btRigidBody* addSphere(float rad, float x, float y, float z, float mass);
-	btRigidBody* addSphere(float rad, Model model, btMatrix3x3 rotation, btVector3 translation, float mass);
+	btRigidBody* AddComponents::addSphere(float rad, float x, float y, float z, float mass);
+	glm::mat4 renderSphere(btRigidBody* sphere);
 	void addGround();
-	void init();
+	btDynamicsWorld* AddComponents::init();
+	void simulation();
 	
 };
-
