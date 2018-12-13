@@ -1,25 +1,23 @@
 #version 330 core
-//in vec4 myColor;
 in vec3 Normal;
 in vec3 FragPos;
-in vec3 normal;
 
 out vec4 color;
 
-//in vec2 texCoord;
-//out vec4 color;
-//uniform sampler2D myTexture1; //same name as in c++ with glUniform1i()
-
- uniform vec3 camPos;
+uniform vec3 camPos;
 uniform vec3 objectColor;
 uniform vec3 lightColor;
 uniform vec3 lightPos;
 
+uniform samplerCube skybox;
+uniform mat4 View;
+uniform mat4 Model;
+
 
 void main(){
-	//color = myColor;
-	//color = texture(myTexture1,texCoord);
 
+// LIGHTING
+	
 	// AMBIENT LIGHT
 	float ambientStrength = 0.2;
 	vec3 ambient = ambientStrength * lightColor;
@@ -32,7 +30,7 @@ void main(){
 													// solution: take the max between 0 and dot product
 
 	// SPEULAR LIGHT
-	vec3 viewDir = normalize(camPos - FragPos);			// eye is in 0,0,0
+	vec3 viewDir = normalize(camPos - FragPos);	
 	vec3 reflectDir = reflect(-lightDir, norm);  
 	int shininess = 32;											// = factor n in '(cos(theta))^n)
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
@@ -45,10 +43,29 @@ void main(){
 	float att = 1 / (kc + kl*d * kq*d*d);
 
 	// TOTAL LIGHT
-	vec3 result = (ambient + emit) * objectColor + objectColor * (diff + spec) * lightColor * att;
+	vec3 result = (ambient + emit) * objectColor + objectColor * (diff + spec) * lightColor; // * att;
 	color = vec4(result, 1.0);
+
+
+
+// REFLECTION OF SKYBOX
+
+	float NdotL = dot(norm, viewDir);
+	vec3 reflection = 2 * NdotL * norm - viewDir;
+	reflection = vec3(inverse(Model) * vec4(reflection, 0.0));	// return in local (object) space (required for texture function)
+
+
+	
+// THE TWO EFFETS COMBINED
+		
+	float percReflection =  1;
+	float percLight = 1.0 - percReflection;
+	vec4 colorRefl = texture(skybox, normalize(reflection));
+	color = mix(color, colorRefl, percReflection);
+
 
 	
 }
+
 
 

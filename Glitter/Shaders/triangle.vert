@@ -1,22 +1,30 @@
 #version 330 core
+layout(location=0) in vec3 position;
+layout(location = 1) in vec3 normals;
+//layout(location = 1) in vec4 vertex_color;
+//layout(location=1) in vec2 itexCoord;		//for texture
 
-layout (location = 0) in vec3 position;  
-layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec2 itexCoord;
+//uniform vec4 myColorAA;		// When defined in the main 
+uniform mat4 View;
+uniform mat4 Projection;
+uniform mat4 Rotation;	// = model matrix
 
-out vec3 FragPos;  // world coordinates
-out vec2 texCoord;
+
+//out vec2 texCoord;  // Output a texture coordinate to the fragment shader for this vertex
+//out vec4 myColor;
+
+out vec3 FragPos;
 out vec3 Normal;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
-uniform vec4 light;
+void main(){
+	gl_Position = Projection * View * Rotation * vec4(position.x,position.y,position.z, 1.0f);
 
-void main() {
-FragPos = vec3(model * vec4(position, 1.0)); // change normal vectors to world coordinates
-gl_Position = projection * view * model * vec4(position.x+0.1f, position.y, position.z, 1.0);
-Normal = mat3(transpose(inverse(model))) * aNormal;  
-//texCoord = vec2(itexCoord.x, 1.0-itexCoord.y);
+	//texCoord = vec2(itexCoord.x, 1.0 - itexCoord.y);  // pass the texture coordinates to the fragment shader (1 - because change of coordinate, see slide session 2)
+	//myColor = myColorAA;
+	Normal = mat3(transpose(inverse(Rotation))) * normals;
+	FragPos = vec3(Rotation * vec4(position, 1.0));	
+	//myColor = vertex_color;
 
+	
 }
+

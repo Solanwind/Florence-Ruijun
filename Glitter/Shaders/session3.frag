@@ -1,25 +1,21 @@
 #version 330 core
-//in vec4 myColor;
+
 in vec3 Normal;
 in vec3 FragPos;
 in vec3 normal;
+in vec3 Color;
 
 out vec4 color;
 
-//in vec2 texCoord;
-//out vec4 color;
-//uniform sampler2D myTexture1; //same name as in c++ with glUniform1i()
 
- uniform vec3 camPos;
-uniform vec3 objectColor;
+//uniform vec3 objectColor;
 uniform vec3 lightColor;
 uniform vec3 lightPos;
 
-
 void main(){
-	//color = myColor;
-	//color = texture(myTexture1,texCoord);
-
+	
+	vec3 objectColor = Color;
+	
 	// AMBIENT LIGHT
 	float ambientStrength = 0.2;
 	vec3 ambient = ambientStrength * lightColor;
@@ -32,7 +28,7 @@ void main(){
 													// solution: take the max between 0 and dot product
 
 	// SPEULAR LIGHT
-	vec3 viewDir = normalize(camPos - FragPos);			// eye is in 0,0,0
+	vec3 viewDir = normalize(- FragPos);			// eye is in 0,0,0
 	vec3 reflectDir = reflect(-lightDir, norm);  
 	int shininess = 32;											// = factor n in '(cos(theta))^n)
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
@@ -45,7 +41,7 @@ void main(){
 	float att = 1 / (kc + kl*d * kq*d*d);
 
 	// TOTAL LIGHT
-	vec3 result = (ambient + emit) * objectColor + objectColor * (diff + spec) * lightColor * att;
+	vec3 result = (ambient + emit) * objectColor + objectColor * (diff + spec) * lightColor;// * att;
 	color = vec4(result, 1.0);
 
 	

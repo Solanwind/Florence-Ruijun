@@ -1,12 +1,17 @@
 #version 330 core
-out vec4 FragColor;
 
-in vec3 TexCoords;
+in vec3 texCoords;
 
-uniform samplerCube skybox;
+out vec4 color;
+
+uniform samplerCube skybox; //same name as in c++ with glUniform1i()
 
 
-void main()
-{    
-    FragColor = texture(skybox, TexCoords);
+void main(){
+	
+	color = texture(skybox,texCoords);
+
+	
 }
+
+
