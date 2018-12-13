@@ -42,13 +42,13 @@ void main(){
 	
 	// ATTENUATION 
 	float kc = 0.5;   // constant attenuation
-	float kl = 0.5;   // linear attenuation
-	float kq = 0.5;   // quadratic attenuation
+	float kl = 0.08;   // linear attenuation
+	float kq = 0.05;   // quadratic attenuation
 	float d = length(tangentLightPos - tangentFragPos);
 	float att = 1 / (kc + kl*d * kq*d*d);
 	
 	// TOTAL LIGHT
-	vec3 result = (ambient + emit) * objectColor + objectColor * (diff + spec) * lightColor * att;
+	vec3 result = (ambient + emit) * objectColor + objectColor * (diff + spec) * lightColor;// * att;
 	color = vec4(result, 1.0);
 
 	
