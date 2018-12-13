@@ -40,7 +40,8 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset);
 
 CreateVAO vao;
-Camera camera(glm::vec3(0.0f, 0.0f, 1.0f));
+AddComponents components;
+Camera camera(glm::vec3(0.0f, 0.5f, 1.0f));
 glm::vec3 lightPos(10.2f, 1.0f, 2.0f);
 GLfloat lastX = 400, lastY = 300;
 bool firstMouse = true;
@@ -71,18 +72,9 @@ int main(int argc, char * argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	glm::mat4 myMatrix = glm::mat4(1.0);  // identify the matrix
-	glm::mat4 myScaledMatrix = glm::scale(myMatrix, glm::vec3(3.0, 3.0f, 3.0f));
-	glm::mat4 myRotationMatrix = glm::rotate(myScaledMatrix, 0.0f*180.0f / 3.14f, glm::vec3(1.0f, 1.0, 0.0));
-	glm::mat4 myCombinationMatrix = glm::translate(myRotationMatrix, glm::vec3(0.0f, 0.0, 0.0));
+
 	glm::mat4 View = camera.GetViewMatrix();
 	glm::mat4 Projection = glm::perspective(camera.Zoom, (float)mWidth / (float)mHeight, 0.1f, 1000.0f);
-
-	glm::mat4 myScaledMatrix_lamp = glm::scale(myMatrix, glm::vec3(0.02f, 0.02f, 0.02f));
-	glm::mat4 myRotationMatrix_lamp = glm::rotate(myScaledMatrix_lamp, 1.0f, glm::vec3(1.0f, 1.0, 0.0));
-	//glm::mat4 myCombinationMatrix_lamp = glm::translate(myRotationMatrix_lamp, lightPos);
-	glm::mat4 myCombinationMatrix_lamp = glm::translate(myRotationMatrix_lamp, glm::vec3(0.0f, 0.0, 0.0));
-	//TransformedVector = TranslationMatrix * RotationMatrix * ScaleMatrix * OriginalVector;
 
 	// Create Context and Load OpenGL Functions
 	glfwMakeContextCurrent(mWindow);
@@ -150,8 +142,18 @@ int main(int argc, char * argv[]) {
 	skyboxShader.use();
 	skyboxShader.setInteger("skybox", 0);
 
-	glm::vec3 velocity(0.05f, 0.0f, 0.0f);
+	
+
+	components.init();
+
 	// Rendering Loop
+
+	components.addGround();
+	btRigidBody* body = components.addSphere(0.1f, 0.0, 0.0, 0.0, 7.26f);
+	body->applyCentralImpulse(btVector3(+10.0f, 0.0f, 0.0f));
+	btRigidBody* body2 = components.addSphere(0.1f, 1.5, 0.0, 0.0, 0.6f);
+	body2->applyCentralImpulse(btVector3(-10.0f, 0.0f, 0.0f));
+
 	while (glfwWindowShouldClose(mWindow) == false) {
 
 		glm::vec3 lightColor;
@@ -159,14 +161,7 @@ int main(int argc, char * argv[]) {
 		lightColor.y = sin(glfwGetTime() * 0.7f);
 		lightColor.z = sin(glfwGetTime() * 1.3f);
 
-
-		float i = 0.0005;
-		velocity.x -= i;
-		glm::mat4 myCombinationMatrix = glm::translate(myRotationMatrix, velocity);
 		View = camera.GetViewMatrix();
-		glm::mat4 myRotationMatrix_lamp = glm::rotate(myScaledMatrix_lamp, velocity.x, glm::vec3(1.0f, 1.0, 0.0));
-		//glm::mat4 myCombinationMatrix_lamp = glm::translate(myRotationMatrix_lamp, lightPos);
-		glm::mat4 myCombinationMatrix_lamp = glm::translate(myRotationMatrix_lamp, glm::vec3(0.0f, 0.0, 0.0));
 
 		showFPS();
 		Do_Movement();
@@ -174,61 +169,25 @@ int main(int argc, char * argv[]) {
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		////////////////////////////////////// Draw the triangle //////////////////////////////////
-		// (Game Loop) Draw the object
-		//triangleShader.use();
-		//triangleShader.setVector4f("maincolor", 0.0f, 0.0f, 1.0f, 1.0f);
-		//triangleShader.setMatrix4("model", myCombinationMatrix);
-		//triangleShader.setMatrix4("view", View);
-		//triangleShader.setMatrix4("projection", Projection);
-		//glBindVertexArray(vao);
-		//glDrawArrays(GL_TRIANGLES, 0, 3);
-		//glBindVertexArray(0);
+		
 
-
-		/////////////////////////////////////// Draw the axes  ///////////////////////////////////
-		//triangleShader.use();
-		//triangleShader.setVector4f("maincolor", 1.0f, 0.0f, 0.0f, 0.0f);  
-		//glBindVertexArray(VAO_axis);
-		//glDrawArrays(GL_LINES, 0, 6);
-		//glBindVertexArray(0);
-
-		/////////////////////////////////////// Draw the cube  ///////////////////////////////////
-		//GLuint texture = createTexture();
-		//triangleShader.setVector4f("light", 0.0f, 0.0f, 1.0f, 1.0f);
-		//glActiveTexture(GL_TEXTURE0);
-		//glBindTexture(GL_TEXTURE_2D, texture);
-		//triangleShader.setInteger("myTexture1", 0);
-		//triangleShader.setVector4f("maincolor", 1.0f, 0.0f, 1.0f, 1.0f);
-
-
-
-		//lampShader.use();
-		//lampShader.setMatrix4("model", myCombinationMatrix_lamp);
-		//lampShader.setMatrix4("view", View);
-		//lampShader.setMatrix4("projection", Projection);
-
-		//glBindVertexArray(VAO_Lamp);
-		//glDrawArrays(GL_TRIANGLES, 0, 36);
-		//glBindVertexArray(0);
-
-
-		//glm::mat4 bunnymodel = bunny.getmodel();
+		components.simulation();
+		glm::mat4 myCombinationMatrix1 = components.renderSphere(body, glm::vec3 (1,1,1));
 
 		lightingShader.use();
 		lightingShader.setVector3f("objectColor", 1.0f, 0.5f, 0.31f);
 		lightingShader.setVector3f("lightColor", lightColor);
 		lightingShader.setVector3f("lightPos", lightPos);
 		lightingShader.setVector3f("viewPos", camera.Position);
-		lightingShader.setMatrix4("model", myCombinationMatrix);
+		lightingShader.setMatrix4("model", myCombinationMatrix1);
 		lightingShader.setMatrix4("view", View);
 		lightingShader.setMatrix4("projection", Projection);
 
 		bunny.Draw(lightingShader);
-	
-
+		
+		glm::mat4 myCombinationMatrix2 = components.renderSphere(body2, glm::vec3(0.05, 0.05, 0.05));
 		cubemapShader.use();
-		cubemapShader.setMatrix4("model", myCombinationMatrix_lamp);
+		cubemapShader.setMatrix4("model", myCombinationMatrix2);
 		cubemapShader.setMatrix4("view", View);
 		cubemapShader.setMatrix4("projection", Projection);
 		cubemapShader.setVector3f("cameraPos", camera.Position);
@@ -242,7 +201,7 @@ int main(int argc, char * argv[]) {
 		//glDrawArrays(GL_TRIANGLES, 0, 36);
 		//glBindVertexArray(0);
 		skull.Draw(cubemapShader);
-
+		components.simulation();
 
 		/////////////Draw skybox////////////////
 		// draw skybox as last
@@ -255,7 +214,6 @@ int main(int argc, char * argv[]) {
 		glDrawArrays(GL_TRIANGLES, 0, 36);
 		glBindVertexArray(0);
 		glDepthFunc(GL_LESS); // set depth function back to default
-
 
 
 
