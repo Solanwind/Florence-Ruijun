@@ -85,7 +85,7 @@ int main(int argc, char * argv[]) {
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
-	auto mWindow = glfwCreateWindow(mWidth, mHeight, "Name of my window", nullptr, nullptr);
+	auto mWindow = glfwCreateWindow(mWidth, mHeight, "BOWLING", nullptr, nullptr);
 
 	// Check for Valid Context
 	if (mWindow == nullptr) {
@@ -207,8 +207,8 @@ int main(int argc, char * argv[]) {
 	/////////// Second rigid body - the ground
 
 	btCompoundShape* groundShape = new btCompoundShape();
-	btCollisionShape* lineShape = new btBoxShape(btVector3(7, 1, 15));
-	btCollisionShape* gutterShape = new btBoxShape(btVector3(7, 0.05, 15));
+	btCollisionShape* lineShape = new btBoxShape(btVector3(15, 1, 15));
+	btCollisionShape* gutterShape = new btBoxShape(btVector3(15, 0.05, 15));
 
 	myTransformLine.setIdentity();
 	myTransformLine.setOrigin(btVector3(0, 0, 0));
@@ -333,7 +333,7 @@ int main(int argc, char * argv[]) {
 	float nLovernTSquared = pow(nLovernT, 2);	// avoid calculation in shaders !  
 
 
-	glm::vec3 lightPos = glm::vec3(0.0f, 5.0f, 5.0f);
+	glm::vec3 lightPos = cameraPosition;//glm::vec3(0.0f, 5.0f, 10.0f);
 	glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
 	glm::vec3 ballColor = glm::vec3(0.0, 0.5, 0.0);
 	glm::vec3 pinColor = glm::vec3(1.0, 1.0, 1.0);
@@ -344,8 +344,8 @@ int main(int argc, char * argv[]) {
 	GLuint VAO_triangle = createTriangleVAO();
 	GLuint texture = createSkyboxTexture();
 	GLuint VAO_bump_map = BumpMappingVAO();
-	GLuint texture_diffuse = create2DTexture("brick.png");
-	GLuint texture_normal = create2DTexture("brick_normal.png");
+	GLuint texture_diffuse = create2DTexture("FloorDiffuse.PNG");
+	GLuint texture_normal = create2DTexture("FloorNormal.png");
 	GLuint VAO_bezier = BezierVAO();
 	GLuint bowtext = create2DTexture("bow.png");
 
@@ -360,6 +360,8 @@ int main(int argc, char * argv[]) {
 	skyboxShader.compile();
 	Shader s3("fire.vert", "fire.frag");
 	s3.compile();
+	Shader s2("bump.vert", "bump.frag");
+	s2.compile();
 
 
 
@@ -394,7 +396,7 @@ int main(int argc, char * argv[]) {
 		//CameraMatrix = glm::lookAt(glm::vec3(cos(time), 0.0, sin(time)), cameraTarget, upVector);			//Session 2, "make it spin"
 
 
-
+		
 		///////////////// SKYBOX ////////////////////
 
 		
@@ -531,7 +533,7 @@ int main(int argc, char * argv[]) {
 		s.use();							// Use shader
 		s.setVector4f("myColorAA", glm::vec4(1.0,0.7,0.4, 1.0));
 
-		glm::mat4 scaleMatrixGround = glm::scale(glm::mat4(1.f), glm::vec3(7, 1, 15));
+		glm::mat4 scaleMatrixGround = glm::scale(glm::mat4(1.f), glm::vec3(15, 1, 15));
 
 		s.setMatrix4("View", CameraMatrix); 										
 		s.setMatrix4("Projection", ProjectionMatrix);
@@ -579,21 +581,22 @@ int main(int argc, char * argv[]) {
 		glDisable(GL_BLEND);
 		glDepthMask(GL_TRUE);
 		
-	
+		
 		
 
 		
 
 		//////////////////// THIRD SHADER ///////////////////////////////////
 		
-		/*
+		
 		 // bump mapping
 		s2.use();							// Use shader
 
-		translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 0, 0));
+		glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.f), glm::vec3(1, 1, 1));
+		glm::mat4 translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 1.01, 0));
 		s2.setMatrix4("View", CameraMatrix);
 		s2.setMatrix4("Projection", ProjectionMatrix);
-		s2.setMatrix4("Rotation", rotationMatrix * translationMatrix);
+		s2.setMatrix4("Rotation", rotationMatrix * translationMatrix * scaleMatrix);
 		s2.setVector3f("camPos", cameraPosition);
 		s2.setVector3f("lightColor", lightColor);
 		s2.setVector3f("lightPos", lightPos);
@@ -612,28 +615,10 @@ int main(int argc, char * argv[]) {
 		glBindVertexArray(VAO_bump_map);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
-		*/
 		
 		
-		/*		// Apply a 2D texture on triangle
-		s2.use();							// Use shader
-
-		translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(3, 0, 1));
-		s2.setMatrix4("View", CameraMatrix);
-		s2.setMatrix4("Projection", ProjectionMatrix);
-		s2.setMatrix4("Rotation", rotationMatrix * translationMatrix);
-		s2.setVector3f("camPos", cameraPosition);
-
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texture2);
-		s2.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, “textureNameInFragmentShader"), 0);
-
-
-		glBindVertexArray(VAO_triangle);
-		glDrawArrays(GL_TRIANGLES, 0, 3);
-		glBindVertexArray(0);
-		*/
+		
+		
 
 
 
@@ -1053,9 +1038,9 @@ GLuint create2DTexture(char const * imName) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// Set texture wrapping to GL_REPEAT
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); 	// Set texture wrapping to GL_REPEAT
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); // Set texture filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);     // www.opengl-tutorial.org/beginners-tutorials/tutorial-5-a-textured-cube/#what-is-filtering-and-mipmapping-and-how-to-use-them
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); // Set texture filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_REPEAT); // Set texture filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_REPEAT);     // www.opengl-tutorial.org/beginners-tutorials/tutorial-5-a-textured-cube/#what-is-filtering-and-mipmapping-and-how-to-use-them
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_REPEAT); // Set texture filtering
 
 	int width_im, height_im, n;
 	unsigned char* image = stbi_load(imName, &width_im, &height_im, &n, 3);
@@ -1109,12 +1094,12 @@ GLuint createSkyboxTexture() {
 
 GLuint BumpMappingVAO() {
 
-	GLfloat vertices[] = { -0.5f, -0.5f, 0.0f,
-							0.5f, -0.5f, 0.0f,
-							-0.5f, 0.5f, 0.0f,
-							0.5f, -0.5f, 0.0f,
-							-0.5f, 0.5f, 0.0f,
-							0.5f, 0.5f, 0.0f };
+	GLfloat vertices[] = { -15.0f, 0.0f, -15.0f,
+							15.0f, 0.0f, -15.0f,
+							-15.0f, 0.0f, 15.0f,
+							15.0f, 0.0f, -15.0f,
+							-15.0f, 0.0f, 15.0f,
+							15.0f, 0.0f, 15.0f };
 
 	GLfloat uvs[] = { 0.0f, 0.0f,
 					  1.0f, 0.0f,
