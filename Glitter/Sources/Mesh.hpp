@@ -46,7 +46,7 @@ public:
     }
 
     // Render the mesh
-    void Draw(Shader shader) 
+    void Draw(Shader shader, GLenum drawtype = GL_TRIANGLES) 
     {
         // Bind appropriate textures
         GLuint diffuseNr = 1;
@@ -74,7 +74,7 @@ public:
 
         // Draw mesh
         glBindVertexArray(this->VAO);
-        glDrawElements(GL_TRIANGLES, this->indices.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(drawtype, this->indices.size(), GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
         // Always good practice to set everything back to defaults once configured.
