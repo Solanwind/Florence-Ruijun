@@ -2,6 +2,9 @@
 #include <vector>
 #include <btBulletDynamicsCommon.h>
 #include "Model.hpp"
+#include <glad/glad.h> // Contains all the necessery OpenGL includes
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 btDynamicsWorld* world;
 btDispatcher* dispatcher;
@@ -12,13 +15,12 @@ std::vector<btRigidBody*> bodies;
 
 
 //btRigidBody* AddComponents::addSphere(float rad, float x, float y, float z, float mass)  // if mass is 0, it's a static object, if mass is not 0, it's a dynamic object
-btRigidBody* AddComponents::addSphere(float rad, Model model, btMatrix3x3 rotation, btVector3 translation, float mass)  // if mass is 0, it's a static object, if mass is not 0, it's a dynamic object
+btRigidBody* AddComponents::addSphere(float rad, float x, float y, float z,  float mass)  // if mass is 0, it's a static object, if mass is not 0, it's a dynamic object
 {
-	float x, y, z;
-	//btTransform transform;
-
-	// 想法：给model一个初始的model matrix
-	btTransform transform = model.Modeltransformation(rotation, translation);  // it contains a quaternion and position
+	
+	btTransform transform;
+	// 鎯虫硶锛氱粰model涓�涓垵濮嬬殑model matrix
+	//btTransform transform = model.Modeltransformation(rotation, translation);  // Give the model's rotation and translation to the transform
 	transform.setIdentity(); //set the position to (0,0,0) and  orientation to (0,0,0,1)
 	transform.setOrigin(btVector3(x, y, z));  //put it to x,y,z coordinates
 	btSphereShape* sphere = new btSphereShape(rad);  // rad =  0.1091565f
@@ -30,6 +32,7 @@ btRigidBody* AddComponents::addSphere(float rad, Model model, btMatrix3x3 rotati
 	btMotionState* motion = new btDefaultMotionState(transform);
 	btRigidBody::btRigidBodyConstructionInfo info(mass, motion, sphere, inertia);  //?? why only 2 parameters
 	btRigidBody* body = new btRigidBody(info);
+
 	world->addRigidBody(body);
 	bodies.push_back(body);
 	
@@ -38,40 +41,34 @@ btRigidBody* AddComponents::addSphere(float rad, Model model, btMatrix3x3 rotati
 
 
 
-void renderSphere(btRigidBody* sphere)
+glm::mat4 AddComponents::renderSphere(btRigidBody* sphere, glm::vec3 mScale)
 {
-	if (sphere->getCollisionShape()->getShapeType() != SPHERE_SHAPE_PROXYTYPE)	//only render, if it's a sphere
-		return;
+	//if (sphere->getCollisionShape()->getShapeType() != SPHERE_SHAPE_PROXYTYPE)	//only render, if it's a sphere
+	//	return ;
 	glColor3f(1, 0, 0);
 	btTransform transform;
 	sphere->getMotionState()->getWorldTransform(transform);	//get the transform
-	float mat[16];
-	transform.getOpenGLMatrix(mat);	//OpenGL matrix stores the rotation and orientation
-	//mEntities[i]->updatePose(mat);
-	/*void Entity::updatePose(glm::mat4 modelMatrix) {
-		mModelMatrix = modelMatrix;
-		mModelMatrix = glm::scale(mModelMatrix, mScale);
-	}*/
-	glPushMatrix();
-	glMultMatrixf(mat);	//multiplying the current matrix with it moves the object in place
-	glPopMatrix();
+	glm::mat4 modelmatrix;
+	transform.getOpenGLMatrix(glm::value_ptr(modelmatrix));	//OpenGL matrix stores the rotation and orientation
+	modelmatrix = glm::scale(modelmatrix, mScale);
+
+
+	return modelmatrix;
 }
 
 
 void AddComponents::addGround() {
+	// Infinite plane defined by normal
+	btCollisionShape* groundShape = new btStaticPlaneShape(btVector3(0, 1, 0), 0);
 
-	//Adding the ground 
-	btTransform t;  // it contains a quaternion and position
-	t.setIdentity(); //set the position to (0,0,0) and  orientation to (0,0,0,1)
-	t.setOrigin(btVector3(0, 0, 0));  // The position that you want the plane
-	btStaticPlaneShape* plane = new btStaticPlaneShape(btVector3(0, 1, 0), 0);  // it's looking upward and it lies on the x,z axis
-	btMotionState* motion = new btDefaultMotionState(t);
-	btRigidBody::btRigidBodyConstructionInfo info(0.0, motion, plane);  //?? why only 2 parameters
-	btRigidBody* body = new btRigidBody(info);
-	world->addRigidBody(body);
-	bodies.push_back(body);
+	btDefaultMotionState* groundMotionState =
+		new btDefaultMotionState(btTransform(btQuaternion(0, 0, 0, 1), btVector3(0, 0, 0)));
+
+	btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI(0, groundMotionState, groundShape, btVector3(0, 0, 0));
+	btRigidBody* groundRigidBody = new btRigidBody(groundRigidBodyCI);
+
+	world->addRigidBody(groundRigidBody);
 }
-
 
 void AddComponents::init()
 {
@@ -81,5 +78,8 @@ void AddComponents::init()
 	solver = new btSequentialImpulseConstraintSolver();
 	world = new btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfig);
 	world->setGravity(btVector3(0, -10, 0));
+}
 
+void AddComponents::simulation() {
+	world->stepSimulation(0.001);
 }
