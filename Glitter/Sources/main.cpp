@@ -1,4 +1,6 @@
 // Local Headers
+// To use stb_image, add this in *one* C++ source file.
+#define STB_IMAGE_IMPLEMENTATION
 #include "glitter.hpp"
 
 // System Headers
@@ -14,7 +16,7 @@
 
 #include "Shader.hpp"
 #include "Model.hpp"
-
+#include "addComponents.hpp"
 
 #include "btBulletDynamicsCommon.h"
 #include <stdio.h>
@@ -44,6 +46,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset);
 
 void showFPS(void);
+
 GLuint createTriangleVAO();
 GLuint createAxisVAO();
 GLuint createCubeVAO();
@@ -58,7 +61,7 @@ bool DetectCollision(btDiscreteDynamicsWorld* myWorld);
 btTriangleMesh  * ObjToCollisionShape(std::string inputFile);
 glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]);
 
-
+AddComponents components;
 int unusedParticle = 0;			// No more life
 GLuint nbParticles = 300;
 std::vector<Particle> particles;
@@ -128,7 +131,7 @@ int main(int argc, char * argv[]) {
 
 
 
-	////////////////// PARTICLES //////////////////////////////////////////
+																					////////////////// PARTICLES //////////////////////////////////////////
 
 	for (GLuint i = 0; i < nbParticles; ++i) {
 		particles.push_back(Particle());
@@ -144,12 +147,13 @@ int main(int argc, char * argv[]) {
 
 	//////////////////////// PHYSICS ENGINE INITIALIZATIION ///////////////////////////////////
 
-	
-	btDiscreteDynamicsWorld* myWorld;		// Declaration of the world
-	btBroadphaseInterface*	myBroadphase;	
+
+	/*btDiscreteDynamicsWorld* myWorld;		// Declaration of the world
+	btBroadphaseInterface*	myBroadphase;
 	btCollisionDispatcher*	myDispatcher;
 	btDefaultCollisionConfiguration* myCollisionConfiguration;
-	btSequentialImpulseConstraintSolver *mySequentialImpulseConstraintSolver;
+	btSequentialImpulseConstraintSolver *mySequentialImpulseConstraintSolver;*/
+
 
 	// Position, orientation.
 	btTransform myTransformBall, myTransformLine, myTransformGutter, myTransformPin1, myTransformPin2, myTransformPin3,
@@ -160,49 +164,37 @@ int main(int argc, char * argv[]) {
 	// to get back position and orientation for OpenGL rendering
 	btScalar	matrixBall[16], matrixPin1[16], matrixPin2[16], matrixPin3[16], matrixPin4[16], matrixPin5[16], matrixPin6[16], matrixPin7[16],
 		matrixPin8[16], matrixPin9[16], matrixPin10[16];
+
 	// for rigid bodies
 	btRigidBody *bodyBall, *bodyGround, *bodyPin1, *bodyPin2, *bodyPin3, *bodyPin4, *bodyPin5, *bodyPin6, *bodyPin7, *bodyPin8, *bodyPin9, *bodyPin10;
 
+	
 
-	///collision configuration contains default setup for memory, collision setup
-	myCollisionConfiguration = new btDefaultCollisionConfiguration();
+	btDynamicsWorld* myWorld = components.init();
+	
 
-	///use the default collision dispatcher. For parallel processing you can use a diffent dispatcher (see Extras/BulletMultiThreaded)
-	myDispatcher = new	btCollisionDispatcher(myCollisionConfiguration);
-
-	myBroadphase = new btDbvtBroadphase();
-
-	///the default constraint solver. For parallel processing you can use a different solver (see Extras/BulletMultiThreaded)
-	mySequentialImpulseConstraintSolver = new btSequentialImpulseConstraintSolver;
-
-	// Initialization of the world
-	myWorld = new btDiscreteDynamicsWorld(myDispatcher, myBroadphase, mySequentialImpulseConstraintSolver, myCollisionConfiguration);
-
-	// Set gravity
-	myWorld->setGravity(btVector3(0, -10, 0));
-		
 
 	/////////// First rigid body - the bowling ball
-	
+
 	// Creation of the collision shape
-	btCollisionShape* ballShape = new btSphereShape(1.0);//new btBoxShape(btVector3(1, 1, 1));
+	//btCollisionShape* ballShape = new btSphereShape(1.0);//new btBoxShape(btVector3(1, 1, 1));
 
-	myTransformBall.setIdentity();
-	myTransformBall.setOrigin(btVector3(0, 2, 3));
+	//myTransformBall.setIdentity();
+	//myTransformBall.setOrigin(btVector3(0, 2, 3));
 
+	/*
 	btVector3 localInertia;
 	btScalar mass = 1.5f;		// mass != 0 -> dynamic
-	ballShape->calculateLocalInertia(mass, localInertia);
+	ballShape->calculateLocalInertia(mass, localInertia);*/
 
 	//using motionstate is recommended, it provides interpolation capabilities, and only synchronizes 'active' objects
-	myMotionStateBall = new btDefaultMotionState(myTransformBall);
-	btRigidBody::btRigidBodyConstructionInfo rbInfoBall(mass, myMotionStateBall, ballShape, localInertia);
-	bodyBall = new btRigidBody(rbInfoBall);
+	//myMotionStateBall = new btDefaultMotionState(myTransformBall);
+	//btRigidBody::btRigidBodyConstructionInfo rbInfoBall(mass, myMotionStateBall, ballShape, localInertia);
+	//bodyBall = new btRigidBody(rbInfoBall);
 
 	//add the body to the dynamics world
-	myWorld->addRigidBody(bodyBall);
-
-
+	//myWorld->addRigidBody(bodyBall);
+	bodyBall = components.addSphere(1.0, 0, 2, 3, 7.26);
 
 	/////////// Second rigid body - the ground
 
@@ -217,12 +209,12 @@ int main(int argc, char * argv[]) {
 	myTransformGutter.setIdentity();
 	myTransformGutter.setOrigin(btVector3(0, 0, 0));
 	groundShape->addChildShape(myTransformGutter, gutterShape);
-	
+
 	myMotionStateGround = new btDefaultMotionState(myTransformLine, myTransformGutter);
 
 
 	btVector3 localInertiaGround(0, 0, 0);
-	mass = 0;									// mass = 0 -> static
+	int mass = 0;									// mass = 0 -> static
 
 	btRigidBody::btRigidBodyConstructionInfo rbInfoGround(mass, myMotionStateGround, groundShape, localInertiaGround);
 	bodyGround = new btRigidBody(rbInfoGround);
@@ -351,16 +343,21 @@ int main(int argc, char * argv[]) {
 
 
 	//////////////////////////// CREATION OF THE SHADERS  /////////////////////////////////////
-	
-	Shader s("simple.vert", "simple.frag");
+
+	Shader s("simple.vert", 
+		"simple.frag");
 	s.compile();										// Don't forget to Compile
-	Shader smov("light.vert", "light.frag");
+	Shader smov("light.vert", 
+		"light.frag");
 	smov.compile();
-	Shader skyboxShader("skybox.vert", "skybox.frag");
+	Shader skyboxShader("skybox.vert", 
+		"skybox.frag");
 	skyboxShader.compile();
-	Shader s3("fire.vert", "fire.frag");
+	Shader s3("fire.vert", 
+		"fire.frag");
 	s3.compile();
-	Shader s2("bump.vert", "bump.frag");
+	Shader s2("bump.vert",
+		"bump.frag");
 	s2.compile();
 
 
@@ -372,7 +369,7 @@ int main(int argc, char * argv[]) {
 
 
 	////////////////////////// WHILE LOOP ///////////////////////////////////////////////
-	
+
 	while (glfwWindowShouldClose(mWindow) == false) {
 		showFPS();
 
@@ -383,8 +380,8 @@ int main(int argc, char * argv[]) {
 
 		glDepthMask(GL_FALSE);		// Remove depth writing
 
-		
-		/////////////////////// DEFINE MATRICES /////////////////////////////////////////
+
+									/////////////////////// DEFINE MATRICES /////////////////////////////////////////
 
 		glm::mat4 CameraMatrix = glm::lookAt(cameraPosition, cameraTarget, upVector);
 		glm::mat4 ProjectionMatrix = glm::perspective(glm::radians(fov), (float)width / (float)height, 0.5f, 100.0f);
@@ -396,10 +393,10 @@ int main(int argc, char * argv[]) {
 		//CameraMatrix = glm::lookAt(glm::vec3(cos(time), 0.0, sin(time)), cameraTarget, upVector);			//Session 2, "make it spin"
 
 
-		
+
 		///////////////// SKYBOX ////////////////////
 
-		
+
 		glDepthMask(GL_FALSE);
 
 		skyboxShader.use();							// Use shader
@@ -417,9 +414,9 @@ int main(int argc, char * argv[]) {
 		glDrawArrays(GL_TRIANGLES, 0, 12 * 3);
 		glBindVertexArray(VAO_cube);
 		glDepthMask(GL_TRUE);	// Reenable depth writing
-		
 
-		// Update dynamics
+
+								// Update dynamics
 		if (myWorld)
 		{
 			//printf("%d", DetectCollision(myWorld));
@@ -427,7 +424,9 @@ int main(int argc, char * argv[]) {
 		}
 
 		// We get the matrices we neeed to apply to our objects
-		myMotionStateBall->m_graphicsWorldTrans.getOpenGLMatrix(matrixBall);
+		
+	//	myMotionStateBall->m_graphicsWorldTrans.getOpenGLMatrix(matrixBall);
+		glm::mat4 matBall = components.renderSphere(bodyBall);
 		myMotionStatePin1->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin1);
 		myMotionStatePin2->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin2);
 		myMotionStatePin3->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin3);
@@ -446,18 +445,19 @@ int main(int argc, char * argv[]) {
 		smov.use();							// Use shader
 
 		glm::mat4 scaleMatrixBall = glm::scale(glm::mat4(1.f), glm::vec3(1, 1, 1));
-		
-		glm::mat4 matBall = glm::mat4(matrixBall[0], matrixBall[1], matrixBall[2], matrixBall[3],  // first column
+
+		/*glm::mat4 matBall = glm::mat4(matrixBall[0], matrixBall[1], matrixBall[2], matrixBall[3],  // first column
 			matrixBall[4], matrixBall[5], matrixBall[6], matrixBall[7],  // second column
 			matrixBall[8], matrixBall[9], matrixBall[10], matrixBall[11],  // third column
-			matrixBall[12], matrixBall[13], matrixBall[14], matrixBall[15]); // fourth column);
+			matrixBall[12], matrixBall[13], matrixBall[14], matrixBall[15]); // fourth column);*/
+
 
 
 		smov.setVector3f("lightColor", lightColor);
 		smov.setVector3f("lightPos", lightPos);
 		smov.setVector3f("objectColor", ballColor);
 		smov.setVector3f("camPos", cameraPosition);
-		smov.setMatrix4("View", CameraMatrix); 										
+		smov.setMatrix4("View", CameraMatrix);
 		smov.setMatrix4("Projection", ProjectionMatrix);
 		smov.setMatrix4("Model", rotationMatrix * matBall * scaleMatrixBall);
 		glActiveTexture(GL_TEXTURE0);
@@ -469,7 +469,7 @@ int main(int argc, char * argv[]) {
 
 
 
-		
+
 
 		/////////// Pins rendering
 
@@ -525,17 +525,17 @@ int main(int argc, char * argv[]) {
 		glm::mat4 matPin10 = bulletMatToOpenGLMat(matrixPin10);
 		smov.setMatrix4("Model", rotationMatrix * matPin10);
 		pin.Draw(smov);
-	
+
 
 
 		/////////// Ground rendering
 
 		s.use();							// Use shader
-		s.setVector4f("myColorAA", glm::vec4(1.0,0.7,0.4, 1.0));
+		s.setVector4f("myColorAA", glm::vec4(1.0, 0.7, 0.4, 1.0));
 
 		glm::mat4 scaleMatrixGround = glm::scale(glm::mat4(1.f), glm::vec3(15, 1, 15));
 
-		s.setMatrix4("View", CameraMatrix); 										
+		s.setMatrix4("View", CameraMatrix);
 		s.setMatrix4("Projection", ProjectionMatrix);
 		s.setMatrix4("Rotation", rotationMatrix * scaleMatrixGround);
 
@@ -548,11 +548,11 @@ int main(int argc, char * argv[]) {
 
 		///////////////////////// PARTICLES /////////////////////////////////////
 		GLuint nbNew = 3;		// Nb of new particles at each frame
-		// Add new particles
+								// Add new particles
 		for (GLuint i = 0; i < nbNew; ++i)
 		{
 			unusedParticle = FirstUnusedParticle();
-			newParticle(particles[unusedParticle], glm::vec3(0,1,-15));
+			newParticle(particles[unusedParticle], glm::vec3(0, 1, -15));
 		}
 
 		glDepthMask(GL_FALSE);
@@ -580,16 +580,16 @@ int main(int argc, char * argv[]) {
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDisable(GL_BLEND);
 		glDepthMask(GL_TRUE);
-		
-		
-		
 
-		
+
+
+
+
 
 		//////////////////// THIRD SHADER ///////////////////////////////////
-		
-		
-		 // bump mapping
+
+
+		// bump mapping
 		s2.use();							// Use shader
 
 		glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.f), glm::vec3(1, 1, 1));
@@ -605,7 +605,7 @@ int main(int argc, char * argv[]) {
 
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, texture_diffuse);
-		s2.setInteger("myTextureDiffuse", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, “textureNameInFragmentShader"), 0);
+		s2.setInteger("myTextureDiffuse", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, Â“textureNameInFragmentShader"), 0);
 
 
 		glActiveTexture(GL_TEXTURE1);
@@ -615,16 +615,15 @@ int main(int argc, char * argv[]) {
 		glBindVertexArray(VAO_bump_map);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
-		
-		
-		
-		
+
+
+
+
 
 
 
 		/*			// BEZIER
 		s3.use();							// Use shader
-
 		translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 0, 0));
 		s3.setMatrix4("View", CameraMatrix);
 		s3.setMatrix4("Projection", ProjectionMatrix);
@@ -633,60 +632,47 @@ int main(int argc, char * argv[]) {
 		s3.setVector3f("controlPoint2", glm::vec3(sin(time), cos(time), sin(time)));
 		s3.setVector3f("controlPoint3", glm::vec3(cos(time), sin(time), cos(time)));
 		s3.setVector3f("controlPoint4", glm::vec3(0.5, 0.5, 0.0));
-		
-		glDepthMask(GL_TRUE);	// Reenable depth writing
 
+		glDepthMask(GL_TRUE);	// Reenable depth writing
 		glBindVertexArray(VAO_bezier);
 		glDrawArrays(GL_LINE_STRIP, 0, 21);  //21 = size of t
 		glBindVertexArray(0);
 		*/
-		
-		/*		
-		s3.use();							// Use shader
 
+		/*
+		s3.use();							// Use shader
 		s3.setMatrix4("View", CameraMatrix);
 		s3.setMatrix4("Projection", ProjectionMatrix);
 		s3.setMatrix4("Rotation", rotationMatrix);
-
-
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, bowtext);
-		s3.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, “textureNameInFragmentShader"), 0);
-
-
+		s3.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, Â“textureNameInFragmentShader"), 0);
 		glBindVertexArray(VAO_rectangle);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
-		
-		*/
-		
 
-		
-		
-		
+		*/
+
+
+
+
+
 
 		//////////////////////// SOME OTHER CODE ////////////////////////////////
 
 		/*
 		glActiveTexture(GL_TEXTURE0);
-
 		glBindTexture(GL_TEXTURE_2D, texture);
-
-		s.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, “textureNameInFragmentShader"), 0);
-
-
+		s.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, Â“textureNameInFragmentShader"), 0);
 		glBindVertexArray(VAO);
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 		glBindVertexArray(0);
-
 		//glBindVertexArray(VAO_axis);
 		//glDrawArrays(GL_LINES, 0, 6);
 		//glBindVertexArray(0);
-
 		//glBindVertexArray(VAO_cube);
 		//glDrawArrays(GL_TRIANGLES, 0, 12*3);
 		//glBindVertexArray(0);
-
 		*/
 
 
@@ -700,11 +686,6 @@ int main(int argc, char * argv[]) {
 	glfwTerminate();
 	return EXIT_SUCCESS;
 }
-
-
-
-
-
 
 
 
@@ -804,7 +785,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {
 	/*
 	if (keys[GLFW_MOUSE_BUTTON_RIGHT]) {
-		std::cout << "Mouse Position : (" << xpos << ", " << ypos << ")" << std::endl;
+	std::cout << "Mouse Position : (" << xpos << ", " << ypos << ")" << std::endl;
 	}
 	*/
 	float cameraSpeed = 0.05f; // adjust accordingly
@@ -830,17 +811,17 @@ void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset)
 {
 	/*
 	if (keys[GLFW_MOUSE_BUTTON_LEFT]) {
-		std::cout << "Mouse Offset : " << yoffset << std::endl;
+	std::cout << "Mouse Offset : " << yoffset << std::endl;
 	}
 	*/
 	/*
 	float cameraSpeed = 0.05f; // adjust accordingly
 	cameraFront = cameraPosition - cameraTarget;
 	if (yoffset < 0) {
-		cameraPosition += cameraSpeed * cameraFront;
+	cameraPosition += cameraSpeed * cameraFront;
 	}
 	if (yoffset > 0) {
-		cameraPosition -= cameraSpeed * cameraFront;
+	cameraPosition -= cameraSpeed * cameraFront;
 	}
 	*/
 
@@ -864,38 +845,37 @@ GLuint createTriangleVAO() {
 
 	GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f, 0.0f, 0.5f, 0.0f };      //ex7
 
-	/*		Session 1, question 8
-	GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-							0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-							0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f };
-	// vertex(3 coord + RGBA)
-	*/
+																						   /*		Session 1, question 8
+																						   GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+																						   0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+																						   0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f };
+																						   // vertex(3 coord + RGBA)
+																						   */
 
-	/*
-	GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,						//coord of the vertex + coord of the texturing im (in uv space)
-							0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-							0.0f, 0.5f, 0.0f, 0.5f, 1.0f };						//session2,ex1
+																						   /*
+																						   GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,						//coord of the vertex + coord of the texturing im (in uv space)
+																						   0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+																						   0.0f, 0.5f, 0.0f, 0.5f, 1.0f };						//session2,ex1
+																						   */
 
-	*/
-
-	// VAO contains pointer to VBO and how to interpret it (to not do it everytime we use the VBO)
-	// DRAWING IS DONE IN THE LOOP, BUT TRANSFER OF DATA FROM RAM to VRAM (GPU) IS DONE ONLY ONCE
+																						   // VAO contains pointer to VBO and how to interpret it (to not do it everytime we use the VBO)
+																						   // DRAWING IS DONE IN THE LOOP, BUT TRANSFER OF DATA FROM RAM to VRAM (GPU) IS DONE ONLY ONCE
 	GLuint VAO, VBO;
 	glGenVertexArrays(1, &VAO);	// Create a VAO (pointer)
 	glBindVertexArray(VAO);		// Use the VAO
 
 
-	// VBO, for triangle
-	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+								// VBO, for triangle
+								//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-	
+
 	// How to interpret datas, for session 1, ex 7 (only vertex)
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-	
+
 
 	/*
 	// How to interpret datas, for session 1, ex 8  (vertex + color)
@@ -925,16 +905,16 @@ GLuint createAxisVAO() {
 
 	// Axis: 2 vertices per line
 	GLfloat vertices_axis[] = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,				//origin + 1,0,0 (x axis)
-								0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-								0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+		0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 
 	// GOOD PRACTICE: 1 VBO PER VAO (otherwise, difficult)
 	GLuint VAO_axis, VBO_axis;
 	glGenVertexArrays(1, &VAO_axis);	// Create a VAO (pointer)
 	glBindVertexArray(VAO_axis);		// Use the VAO
 
-	// VBO, for axis
-	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+										// VBO, for axis
+										//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO_axis);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_axis);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_axis), vertices_axis, GL_STATIC_DRAW);
@@ -956,47 +936,47 @@ GLuint createCubeVAO() {
 
 	// Vertex only
 	GLfloat vertices_cube[] = {
-	-1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f,  1.0f, -1.0f,
-	 1.0f,  1.0f, -1.0f,
-	-1.0f,  1.0f, -1.0f,
-	-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f,  1.0f, -1.0f,
+		1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
 
-	-1.0f, -1.0f,  1.0f,
-	 1.0f, -1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f,  1.0f,
-	-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+		1.0f, -1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
 
-	-1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f, -1.0f,
-	-1.0f, -1.0f, -1.0f,
-	-1.0f, -1.0f, -1.0f,
-	-1.0f, -1.0f,  1.0f,
-	-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
 
-	 1.0f,  1.0f,  1.0f,
-	 1.0f,  1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
 
-	-1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f,  1.0f,
-	 1.0f, -1.0f,  1.0f,
-	-1.0f, -1.0f,  1.0f,
-	-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f,  1.0f,
+		1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,
 
-	-1.0f,  1.0f, -1.0f,
-	 1.0f,  1.0f, -1.0f,
-	 1.0f,  1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f, -1.0f
+		-1.0f,  1.0f, -1.0f,
+		1.0f,  1.0f, -1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f
 
 	};
 
@@ -1005,8 +985,8 @@ GLuint createCubeVAO() {
 	glGenVertexArrays(1, &VAO_cube);	// Create a VAO (pointer)
 	glBindVertexArray(VAO_cube);		// Use the VAO
 
-	// VBO, for axis
-	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+										// VBO, for axis
+										//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO_cube);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_cube);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_cube), vertices_cube, GL_STATIC_DRAW);
@@ -1058,8 +1038,14 @@ GLuint create2DTexture(char const * imName) {
 
 GLuint createSkyboxTexture() {
 	//std::vector<std::string> textures = { "posx.jpg","negx.jpg","posy.jpg","negy.jpg" ,"testPosz.jpg","negz.jpg" };
-	std::vector<std::string> textures = { "posx.jpg","negx.jpg","posy.jpg","negy.jpg" ,"posz.jpg","negz.jpg" }; // 6 images for the 6 faces of the cube
-	//std::vector<std::string> textures = { "checkerboard.jpg","checkerboard.jpg","checkerboard.jpg","checkerboard.jpg" ,"checkerboard.jpg","checkerboard.jpg" };
+	std::vector<std::string> textures = { 
+		"posx.jpg",
+		"negx.jpg",
+		"posy.jpg",
+		"negy.jpg" ,
+		"posz.jpg",
+		"negz.jpg" }; // 6 images for the 6 faces of the cube
+																												//std::vector<std::string> textures = { "checkerboard.jpg","checkerboard.jpg","checkerboard.jpg","checkerboard.jpg" ,"checkerboard.jpg","checkerboard.jpg" };
 	GLuint texture;
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
@@ -1095,18 +1081,18 @@ GLuint createSkyboxTexture() {
 GLuint BumpMappingVAO() {
 
 	GLfloat vertices[] = { -15.0f, 0.0f, -15.0f,
-							15.0f, 0.0f, -15.0f,
-							-15.0f, 0.0f, 15.0f,
-							15.0f, 0.0f, -15.0f,
-							-15.0f, 0.0f, 15.0f,
-							15.0f, 0.0f, 15.0f };
+		15.0f, 0.0f, -15.0f,
+		-15.0f, 0.0f, 15.0f,
+		15.0f, 0.0f, -15.0f,
+		-15.0f, 0.0f, 15.0f,
+		15.0f, 0.0f, 15.0f };
 
 	GLfloat uvs[] = { 0.0f, 0.0f,
-					  1.0f, 0.0f,
-					  0.0f, 1.0f,
-					  1.0f, 0.0f,
-					  0.0f, 1.0f,
-					  1.0f, 1.0f };
+		1.0f, 0.0f,
+		0.0f, 1.0f,
+		1.0f, 0.0f,
+		0.0f, 1.0f,
+		1.0f, 1.0f };
 
 
 	GLfloat tangents[std::size(vertices) / 3] = {};
@@ -1206,14 +1192,14 @@ GLuint BumpMappingVAO() {
 
 GLuint BezierVAO() {
 
-	GLfloat t[] = {0.0,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95,1.0};
+	GLfloat t[] = { 0.0,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95,1.0 };
 
 	GLuint VAO_bezier, VBO_bezier;
 	glGenVertexArrays(1, &VAO_bezier);	// Create a VAO (pointer)
 	glBindVertexArray(VAO_bezier);		// Use the VAO
 
-	// VBO, for axis
-	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+										// VBO, for axis
+										//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO_bezier);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_bezier);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(t), t, GL_STATIC_DRAW);
@@ -1232,11 +1218,11 @@ GLuint createRectVAO() {
 
 
 	GLfloat vertices[] = { -1.0f, 0.0f, -3.0f, 0.0f, 0.0f,
-							1.0f, 0.0f, -3.0f, 1.0f, 0.0f,
-							-1.0f, 0.0f, 3.0f, 0.0f, 1.0f,
-							1.0f, 0.0f, -3.0f, 1.0f, 0.0f,
-							-1.0f, 0.0f, 3.0f, 0.0f, 1.0f,
-							1.0f, 0.0f, 3.0f, 1.0f, 1.0f};
+		1.0f, 0.0f, -3.0f, 1.0f, 0.0f,
+		-1.0f, 0.0f, 3.0f, 0.0f, 1.0f,
+		1.0f, 0.0f, -3.0f, 1.0f, 0.0f,
+		-1.0f, 0.0f, 3.0f, 0.0f, 1.0f,
+		1.0f, 0.0f, 3.0f, 1.0f, 1.0f };
 
 
 	// VAO contains pointer to VBO and how to interpret it (to not do it everytime we use the VBO)
@@ -1246,13 +1232,13 @@ GLuint createRectVAO() {
 	glBindVertexArray(VAO);		// Use the VAO
 
 
-	// VBO, for triangle
-	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+								// VBO, for triangle
+								//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-	
+
 	// How to interpret datas, for session 2, ex 1 (vertex + texture)
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
@@ -1294,7 +1280,7 @@ GLuint FirstUnusedParticle()
 
 void newParticle(Particle &particle, glm::vec3 objPos)
 {
-	
+
 	GLfloat random = ((rand() % 100) - 50) / 10.0f;
 	GLfloat random2 = ((rand() % 100) - 50) / 10.0f;
 	GLfloat random3 = ((rand() % 100) - 50) / 10.0f;
@@ -1304,7 +1290,7 @@ void newParticle(Particle &particle, glm::vec3 objPos)
 	particle.pos = objPos; // glm::vec3(((rand() % 100) - 50) / 500.0f, ((rand() % 100) - 50) / 500.0f, ((rand() % 100) - 50) / 500.0f);// +random;
 	particle.color = glm::vec4(0.95, 0.7*randG, 0.1*randB, 1.0f);
 	particle.lifetime = 1.0f;
-	particle.speed = glm::vec3(2*random, -4*abs(random2),2*random3); 
+	particle.speed = glm::vec3(2 * random, -4 * abs(random2), 2 * random3);
 
 }
 
@@ -1341,7 +1327,7 @@ btTriangleMesh * ObjToCollisionShape(std::string inputFile) {
 	std::ifstream inFile(inputFile);
 	std::vector<btVector3> vertices;
 	std::vector<btVector3> triangles;
-	
+
 	while (std::getline(inFile, line)) {
 		std::istringstream iss(line);
 
@@ -1376,7 +1362,7 @@ btTriangleMesh * ObjToCollisionShape(std::string inputFile) {
 	for (const btVector3 &triangle : triangles) {
 		triangleMesh->addTriangle(vertices[triangle.x()], vertices[triangle.y()], vertices[triangle.z()]);
 	}
-	
+
 	return triangleMesh;
 }
 
