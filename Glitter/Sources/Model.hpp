@@ -40,13 +40,6 @@ public:
 		return mytransformation;
 	}
 	
-	glm::mat4 getmodel(btTransform mytransformation) {
-
-		glm::mat4 matrix;
-		mytransformation.getOpenGLMatrix(glm::value_ptr(matrix));
-		return matrix;
-
-	}
 
 	// Draws the model, and thus all its meshes
 	void Draw(Shader shader)
