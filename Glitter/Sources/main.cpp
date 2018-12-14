@@ -182,10 +182,10 @@ int main(int argc, char * argv[]) {
 	//myTransformBall.setIdentity();
 	//myTransformBall.setOrigin(btVector3(0, 2, 3));
 
-	/*
-	btVector3 localInertia;
+	
+	//btVector3 localInertia;
 	btScalar mass = 1.5f;		// mass != 0 -> dynamic
-	ballShape->calculateLocalInertia(mass, localInertia);*/
+	//ballShape->calculateLocalInertia(mass, localInertia);
 
 	//using motionstate is recommended, it provides interpolation capabilities, and only synchronizes 'active' objects
 	//myMotionStateBall = new btDefaultMotionState(myTransformBall);
@@ -214,7 +214,7 @@ int main(int argc, char * argv[]) {
 
 
 	btVector3 localInertiaGround(0, 0, 0);
-	int mass = 0;									// mass = 0 -> static
+	mass = 0;									// mass = 0 -> static
 
 	btRigidBody::btRigidBodyConstructionInfo rbInfoGround(mass, myMotionStateGround, groundShape, localInertiaGround);
 	bodyGround = new btRigidBody(rbInfoGround);
