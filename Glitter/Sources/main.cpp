@@ -16,6 +16,7 @@
 
 #include "Shader.hpp"
 #include "Model.hpp"
+#include "Camera.hpp"
 #include "addComponents.hpp"
 
 #include "btBulletDynamicsCommon.h"
@@ -61,7 +62,11 @@ bool DetectCollision(btDiscreteDynamicsWorld* myWorld);
 btTriangleMesh  * ObjToCollisionShape(std::string inputFile);
 glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]);
 
+Camera cam;
 AddComponents components;
+btRigidBody* shooterball;
+glm::mat4 combinationmatrix;
+
 int unusedParticle = 0;			// No more life
 GLuint nbParticles = 300;
 std::vector<Particle> particles;
@@ -469,6 +474,35 @@ int main(int argc, char * argv[]) {
 
 
 
+		if (keys[GLFW_KEY_SPACE]) {
+			shooterball = components.addSphere(1.0, 0, 2, 3, 7.26);
+			shooterball->activate(true);
+			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
+			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
+		}
+	
+
+		if (combinationmatrix[0][0] != 0) {
+			combinationmatrix = components.renderSphere(shooterball);
+		}
+		else {
+			combinationmatrix;
+		}
+		
+
+		smov.setVector3f("lightColor", lightColor);
+		smov.setVector3f("lightPos", lightPos);
+		smov.setVector3f("objectColor", ballColor);
+		smov.setVector3f("camPos", cameraPosition);
+		smov.setMatrix4("View", CameraMatrix);
+		smov.setMatrix4("Projection", ProjectionMatrix);
+		smov.setMatrix4("Model", rotationMatrix * combinationmatrix * scaleMatrixBall);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		smov.setInteger("skybox", 0);
+		smov.setFloat("percReflection", 0.2);
+		glDepthMask(GL_TRUE);
+		ball.Draw(smov);
 
 
 		/////////// Pins rendering
