@@ -479,6 +479,7 @@ int main(int argc, char * argv[]) {
 			shooterball->activate(true);
 			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
 			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
+			cout << "You have pressed the shooting button!" << endl;
 		}
 	
 
