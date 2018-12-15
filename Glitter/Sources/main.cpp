@@ -355,6 +355,9 @@ int main(int argc, char * argv[]) {
 	Shader smov("light.vert", 
 		"light.frag");
 	smov.compile();
+	Shader srefr("refraction.vert",
+		"refraction.frag");
+	srefr.compile();
 	Shader skyboxShader("skybox.vert", 
 		"skybox.frag");
 	skyboxShader.compile();
@@ -472,40 +475,6 @@ int main(int argc, char * argv[]) {
 		glDepthMask(GL_TRUE);
 		ball.Draw(smov);
 
-
-
-		if (keys[GLFW_KEY_SPACE]) {
-			shooterball = components.addSphere(1.0, 0, 2, 3, 7.26);
-			shooterball->activate(true);
-			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
-			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
-			cout << "You have pressed the shooting button!" << endl;
-		}
-	
-
-		if (combinationmatrix[0][0] != 0) {
-			combinationmatrix = components.renderSphere(shooterball);
-		}
-		else {
-			combinationmatrix;
-		}
-		
-
-		smov.setVector3f("lightColor", lightColor);
-		smov.setVector3f("lightPos", lightPos);
-		smov.setVector3f("objectColor", ballColor);
-		smov.setVector3f("camPos", cameraPosition);
-		smov.setMatrix4("View", CameraMatrix);
-		smov.setMatrix4("Projection", ProjectionMatrix);
-		smov.setMatrix4("Model", rotationMatrix * combinationmatrix * scaleMatrixBall);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
-		smov.setInteger("skybox", 0);
-		smov.setFloat("percReflection", 0.2);
-		glDepthMask(GL_TRUE);
-		ball.Draw(smov);
-
-
 		/////////// Pins rendering
 
 		smov.setVector3f("objectColor", pinColor);
@@ -561,6 +530,41 @@ int main(int argc, char * argv[]) {
 		smov.setMatrix4("Model", rotationMatrix * matPin10);
 		pin.Draw(smov);
 
+
+		///////////// The second shooted ball //////////////////
+		srefr.use();
+		if (keys[GLFW_KEY_SPACE]) {
+			shooterball = components.addSphere(1.0, 0, 2, 4, 7.26);
+			shooterball->activate(true);
+			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
+			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
+			cout << "You have pressed the shooting button!" << endl;
+			//	cout<< combinationmatrix[]
+		}
+
+
+		if (combinationmatrix[0][0] != 0) {
+			combinationmatrix = components.renderSphere(shooterball);
+		}
+
+		else {
+			combinationmatrix;
+		}
+
+
+		srefr.setVector3f("lightColor", lightColor);
+		srefr.setVector3f("lightPos", lightPos);
+		srefr.setVector3f("objectColor", ballColor);
+		srefr.setVector3f("camPos", cameraPosition);
+		srefr.setMatrix4("View", CameraMatrix);
+		srefr.setMatrix4("Projection", ProjectionMatrix);
+		srefr.setMatrix4("Model", rotationMatrix * combinationmatrix * scaleMatrixBall);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		srefr.setInteger("skybox", 0);
+		srefr.setFloat("percReflection", 0.2);
+		glDepthMask(GL_TRUE);
+		ball.Draw(srefr);
 
 
 		/////////// Ground rendering
