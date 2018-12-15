@@ -533,15 +533,7 @@ int main(int argc, char * argv[]) {
 
 		///////////// The second shooted ball //////////////////
 		srefr.use();
-		if (keys[GLFW_KEY_SPACE]) {
-			shooterball = components.addSphere(1.0, 0, 2, 4, 7.26);
-			shooterball->activate(true);
-			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
-			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
-			cout << "You have pressed the shooting button!" << endl;
-			//	cout<< combinationmatrix[]
-		}
-
+		
 
 		if (combinationmatrix[0][0] != 0) {
 			combinationmatrix = components.renderSphere(shooterball);
@@ -765,6 +757,15 @@ static void key_callback(GLFWwindow* window, int key, int /*scancode*/, int acti
 
 	if (keys[GLFW_KEY_ESCAPE])
 		glfwSetWindowShouldClose(window, GL_TRUE);
+
+	if (keys[GLFW_KEY_SPACE]) {
+			shooterball = components.addSphere(1.0, 0, 2, 4, 7.26);
+			shooterball->activate(true);
+			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
+			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
+			cout << "You have pressed the shooting button!" << endl;
+			//	cout<< combinationmatrix[]
+		}
 
 	// V-SYNC
 	if (keys[GLFW_KEY_U]) {
