@@ -1,6 +1,4 @@
 // Local Headers
-// To use stb_image, add this in *one* C++ source file.
-#define STB_IMAGE_IMPLEMENTATION
 #include "glitter.hpp"
 
 // System Headers
@@ -16,14 +14,10 @@
 
 #include "Shader.hpp"
 #include "Model.hpp"
-#include "Camera.hpp"
-#include "addComponents.hpp"
 
 #include "btBulletDynamicsCommon.h"
 #include <stdio.h>
-
-
-
+#include "Camera.hpp"
 
 
 
@@ -42,30 +36,30 @@ static bool keys[1024]; // is a key pressed or not ?
 						// External static callback
 						// Is called whenever a key is pressed/released via GLFW
 static void key_callback(GLFWwindow* window, int key, int /*scancode*/, int action, int /*mode*/);
-static void mouse_button_callback(GLFWwindow* /*window*/, int button, int action, int /*mods*/);
+static void mouse_button_callback(GLFWwindow* window, int button, int action, int /*mods*/);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset);
 
-void showFPS(void);
+Camera camera(glm::vec3(0.0f, 15.0f, 70.0f));
+GLfloat lastX = 400, lastY = 300;
+bool firstThrow = true;
+bool ballView = false;
 
-GLuint createTriangleVAO();
-GLuint createAxisVAO();
+
+void showFPS(void);
+void Do_Movement();
+void createBall();
 GLuint createCubeVAO();
 GLuint create2DTexture(char const * path);
 GLuint createSkyboxTexture();
-GLuint BumpMappingVAO();
-GLuint BezierVAO();
+GLuint BumpMappingVAO(glm::vec3 pos1, glm::vec3 pos2, glm::vec3 pos3, glm::vec3 pos4, glm::vec3 nm, float repeatFactor);
 GLuint createRectVAO();
 GLuint FirstUnusedParticle();
 void newParticle(Particle &particle, glm::vec3 objPos);
-bool DetectCollision(btDiscreteDynamicsWorld* myWorld);
 btTriangleMesh  * ObjToCollisionShape(std::string inputFile);
 glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]);
 
-Camera cam;
-AddComponents components;
-btRigidBody* shooterball;
-glm::mat4 combinationmatrix;
+
 
 int unusedParticle = 0;			// No more life
 GLuint nbParticles = 300;
@@ -74,17 +68,25 @@ int lastUsedParticle = 0;
 
 float deltaTime = 0.0f;
 
-float fov = 45.0f;
-double xpos_prev;
-double ypos_prev;
 
-glm::mat4 rotationMatrix = glm::mat4(1.0f);	// identity matrix
 glm::mat4 rot = glm::mat4(1.0f);	// identity matrix
-glm::mat4 translationMatrixPin1 = glm::mat4(1.0f);	// identity matrix
 float rot_x = 0.0f, rot_y = 0.0f;
 
 
+btDiscreteDynamicsWorld* myWorld;		// Declaration of the world
+btTransform myTransformBall;
+btDefaultMotionState *myMotionStateBall;
+btScalar	matrixBall[16];
+btRigidBody *bodyBall;
+btCollisionShape* ballShape;
+bool throwBall = false;
+
+
+
+
+
 int main(int argc, char * argv[]) {
+
 
 	// Load GLFW and Create a Window
 	glfwInit();
@@ -107,9 +109,6 @@ int main(int argc, char * argv[]) {
 	fprintf(stderr, "OpenGL %s\n", glGetString(GL_VERSION));
 
 
-
-
-
 	// Set the required callback functions
 	glfwSetKeyCallback(mWindow, key_callback);
 	glfwSetCursorPosCallback(mWindow, mouse_callback);
@@ -125,18 +124,7 @@ int main(int argc, char * argv[]) {
 
 
 
-	///////////////// CAMERA MATRIX //////////////////////////////
-
-	glm::vec3 cameraPosition = glm::vec3(0.0f, 5.0f, 20.0f);	// position of your camera, in world space
-	glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);		// where you want to look at, in world space
-	glm::vec3 upVector = glm::vec3(0.0f, 1.0f, 0.0f);			// probably glm::vec3(0,1,0), but (0,-1,0) would make you looking upside-down, which can be great too
-
-	glm::mat4 CameraMatrix = glm::lookAt(cameraPosition, cameraTarget, upVector);	// CameraMatrix = view matrix
-
-
-
-
-																					////////////////// PARTICLES //////////////////////////////////////////
+	////////////////// PARTICLES //////////////////////////////////////////
 
 	for (GLuint i = 0; i < nbParticles; ++i) {
 		particles.push_back(Particle());
@@ -146,86 +134,77 @@ int main(int argc, char * argv[]) {
 
 	///////////////////////// LOADING MODELS ///////////////////////////////////////////
 	Model ball("bowlingBall.obj");
-	Model part("sphere.obj");
+	Model sphere("sphere.obj");
 	Model pin("pin3.obj");
 
 
-	//////////////////////// PHYSICS ENGINE INITIALIZATIION ///////////////////////////////////
+	//////////////////////// PHYSICS INITIALIZATIION ///////////////////////////////////
 
-
-	/*btDiscreteDynamicsWorld* myWorld;		// Declaration of the world
-	btBroadphaseInterface*	myBroadphase;
-	btCollisionDispatcher*	myDispatcher;
-	btDefaultCollisionConfiguration* myCollisionConfiguration;
-	btSequentialImpulseConstraintSolver *mySequentialImpulseConstraintSolver;*/
+	///collision configuration contains default setup for memory, collision setup
+	btDefaultCollisionConfiguration* myCollisionConfiguration = new btDefaultCollisionConfiguration();
+	///use the default collision dispatcher. For parallel processing you can use a diffent dispatcher (see Extras/BulletMultiThreaded)
+	btCollisionDispatcher*	myDispatcher = new	btCollisionDispatcher(myCollisionConfiguration);
+	btBroadphaseInterface*	myBroadphase = new btDbvtBroadphase();
+	///the default constraint solver. For parallel processing you can use a different solver (see Extras/BulletMultiThreaded)
+	btSequentialImpulseConstraintSolver *mySequentialImpulseConstraintSolver = new btSequentialImpulseConstraintSolver;
+	// Initialization of the world
+	myWorld = new btDiscreteDynamicsWorld(myDispatcher, myBroadphase, mySequentialImpulseConstraintSolver, myCollisionConfiguration);
+	// Set gravity
+	myWorld->setGravity(btVector3(0, -9.81, 0));
 
 
 	// Position, orientation.
-	btTransform myTransformBall, myTransformLine, myTransformGutter, myTransformPin1, myTransformPin2, myTransformPin3,
+	btTransform myTransformGround, myTransformGroundSkybox, myTransformGroundSkybox2, myTransformPin1, myTransformPin2, myTransformPin3,
 		myTransformPin4, myTransformPin5, myTransformPin6, myTransformPin7, myTransformPin8, myTransformPin9, myTransformPin10;
 	// btDefaultMotionState to synchronize transformations
-	btDefaultMotionState *myMotionStateBall, *myMotionStateGround, *myMotionStatePin1, *myMotionStatePin2, *myMotionStatePin3,
+	btDefaultMotionState *myMotionStateGround, *myMotionStateGroundSkybox, *myMotionStateGroundSkybox2, *myMotionStatePin1, *myMotionStatePin2, *myMotionStatePin3,
 		*myMotionStatePin4, *myMotionStatePin5, *myMotionStatePin6, *myMotionStatePin7, *myMotionStatePin8, *myMotionStatePin9, *myMotionStatePin10;
 	// to get back position and orientation for OpenGL rendering
-	btScalar	matrixBall[16], matrixPin1[16], matrixPin2[16], matrixPin3[16], matrixPin4[16], matrixPin5[16], matrixPin6[16], matrixPin7[16],
+	btScalar	matrixPin1[16], matrixPin2[16], matrixPin3[16], matrixPin4[16], matrixPin5[16], matrixPin6[16], matrixPin7[16],
 		matrixPin8[16], matrixPin9[16], matrixPin10[16];
-
 	// for rigid bodies
-	btRigidBody *bodyBall, *bodyGround, *bodyPin1, *bodyPin2, *bodyPin3, *bodyPin4, *bodyPin5, *bodyPin6, *bodyPin7, *bodyPin8, *bodyPin9, *bodyPin10;
-
-	
-
-	btDynamicsWorld* myWorld = components.init();
-	
+	btRigidBody *bodyGround, *bodyGroundSkybox, *bodyGroundSkybox2, *bodyPin1, *bodyPin2, *bodyPin3, *bodyPin4, *bodyPin5, *bodyPin6, *bodyPin7, *bodyPin8, *bodyPin9, *bodyPin10;
+	btScalar mass;
 
 
-	/////////// First rigid body - the bowling ball
+	/////////// Static rigid body - the bowling alley
 
-	// Creation of the collision shape
-	//btCollisionShape* ballShape = new btSphereShape(1.0);//new btBoxShape(btVector3(1, 1, 1));
-
-	//myTransformBall.setIdentity();
-	//myTransformBall.setOrigin(btVector3(0, 2, 3));
-
-	
-	//btVector3 localInertia;
-	btScalar mass = 1.5f;		// mass != 0 -> dynamic
-	//ballShape->calculateLocalInertia(mass, localInertia);
-
-	//using motionstate is recommended, it provides interpolation capabilities, and only synchronizes 'active' objects
-	//myMotionStateBall = new btDefaultMotionState(myTransformBall);
-	//btRigidBody::btRigidBodyConstructionInfo rbInfoBall(mass, myMotionStateBall, ballShape, localInertia);
-	//bodyBall = new btRigidBody(rbInfoBall);
-
-	//add the body to the dynamics world
-	//myWorld->addRigidBody(bodyBall);
-	bodyBall = components.addSphere(1.0, 0, 2, 3, 7.26);
-
-	/////////// Second rigid body - the ground
-
-	btCompoundShape* groundShape = new btCompoundShape();
-	btCollisionShape* lineShape = new btBoxShape(btVector3(15, 1, 15));
-	btCollisionShape* gutterShape = new btBoxShape(btVector3(15, 0.05, 15));
-
-	myTransformLine.setIdentity();
-	myTransformLine.setOrigin(btVector3(0, 0, 0));
-	groundShape->addChildShape(myTransformLine, lineShape);
-
-	myTransformGutter.setIdentity();
-	myTransformGutter.setOrigin(btVector3(0, 0, 0));
-	groundShape->addChildShape(myTransformGutter, gutterShape);
-
-	myMotionStateGround = new btDefaultMotionState(myTransformLine, myTransformGutter);
-
-
+	btCollisionShape* groundShape = new btBoxShape(btVector3(15, 1, 30));
+	myTransformGround.setIdentity();
+	myTransformGround.setOrigin(btVector3(0, 0, 15));
+	myMotionStateGround = new btDefaultMotionState(myTransformGround);
 	btVector3 localInertiaGround(0, 0, 0);
 	mass = 0;									// mass = 0 -> static
-
 	btRigidBody::btRigidBodyConstructionInfo rbInfoGround(mass, myMotionStateGround, groundShape, localInertiaGround);
 	bodyGround = new btRigidBody(rbInfoGround);
-
 	// Add the body to the dynamics world
 	myWorld->addRigidBody(bodyGround);
+
+
+
+	/////////// Static rigid body - the ground of the skybox
+
+	btCollisionShape* groundShapeSkybox = new btBoxShape(btVector3(100, 0.01, 100));
+	myTransformGroundSkybox.setIdentity();
+	myTransformGroundSkybox.setOrigin(btVector3(0, -100, 0));
+	myMotionStateGroundSkybox = new btDefaultMotionState(myTransformGroundSkybox);
+	btVector3 localInertiaGroundSkybox(0, 0, 0);
+	mass = 0;									// mass = 0 -> static
+	btRigidBody::btRigidBodyConstructionInfo rbInfoGroundSkybox(mass, myMotionStateGroundSkybox, groundShapeSkybox, localInertiaGroundSkybox);
+	bodyGroundSkybox = new btRigidBody(rbInfoGroundSkybox);
+	// Add the body to the dynamics world
+	myWorld->addRigidBody(bodyGroundSkybox);
+
+	btCollisionShape* groundShapeSkybox2 = new btBoxShape(btVector3(0.01, 100, 100));
+	myTransformGroundSkybox2.setIdentity();
+	myTransformGroundSkybox2.setOrigin(btVector3(20.01, 0, 0));
+	myMotionStateGroundSkybox2 = new btDefaultMotionState(myTransformGroundSkybox2);
+	btVector3 localInertiaGroundSkybox2(0, 0, 0);
+	mass = 0;									// mass = 0 -> static
+	btRigidBody::btRigidBodyConstructionInfo rbInfoGroundSkybox2(mass, myMotionStateGroundSkybox2, groundShapeSkybox2, localInertiaGroundSkybox2);
+	bodyGroundSkybox2 = new btRigidBody(rbInfoGroundSkybox2);
+	// Add the body to the dynamics world
+	myWorld->addRigidBody(bodyGroundSkybox2);
 
 
 	/////////// Next rigid bodies - Pins
@@ -316,125 +295,193 @@ int main(int argc, char * argv[]) {
 	myWorld->addRigidBody(bodyPin10);
 
 
-	/////////// Apply force on the ball
 
-	bodyBall->activate(true);
-	bodyBall->applyCentralImpulse(btVector3(+3.0f, 0.0f, -20.0f));
-	//body->setAngularVelocity(btVector3(1, 0, 0));
+	/////////////////////////// SOME PARAMETERS /////////////////////////////////////////
 
+	bool renderBall = false;
+	double time;
+	float luminosity;
 
-	//////////////// Parameters for refraction /////////////////////////////////////////
-	float nL = 1.0f;  // refractive index of incident medium = air
-	float nT = 1.4f;   // refractive index of transmitting medium (the model in our skybox)
-	float nLovernT = nL / nT;	// avoid calculation in shaders !
-	float nLovernTSquared = pow(nLovernT, 2);	// avoid calculation in shaders !  
+	//////// Light
+	glm::vec3 pointLightPositions[] = {
+	glm::vec3(0.0f,  8.0f,  15.0f),
+	glm::vec3(0.0f, 8.0f, -4.0f),
+	glm::vec3(3.0f,  3.0f, 40.0f),
+	glm::vec3(19.0f,  24.0f, 35.0f),
+	glm::vec3(19.0f,  24.0f, -14.0f),
+	glm::vec3(0.0f,  6.0f, 25.0f) };
+	glm::vec3 pointLightColors[] = {
+	glm::vec3(1.0f,  1.0f,  1.0f),
+	glm::vec3(1.0f, 0.0f, 0.0f),
+	glm::vec3(0.0f,  1.0f, 0.0f),
+	glm::vec3(0.0f,  0.0f, 1.0f) };
+	float pointLightAttenuations[] = { 0, 1, 3, 20, 7, 3 };
 
-
-	glm::vec3 lightPos = cameraPosition;//glm::vec3(0.0f, 5.0f, 10.0f);
-	glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
+	//////// Object colors
+	glm::vec4 groundColor = glm::vec4(1.0, 0.7, 0.4, 1.0);
 	glm::vec3 ballColor = glm::vec3(0.0, 0.5, 0.0);
-	glm::vec3 pinColor = glm::vec3(1.0, 1.0, 1.0);
+	glm::vec3 pinColor = glm::vec3(0.8, 0.8, 0.8);
+
+	//////// Bump mapping ground
+	glm::vec3 pos1G(-15.0f, 0.0f, 45.0f);
+	glm::vec3 pos2G(-15.0f, 0.0f, -15.0f);
+	glm::vec3 pos3G(15.0f, 0.0f, -15.0f);
+	glm::vec3 pos4G(15.0f, 0.0f, 45.0f);
+	glm::vec3 nmG(0.0f, 1.0f, 0.0f);
+
+	//////// Bump mapping wall
+	glm::vec3 pos1W(20.01f, -100.0f, 100.0f);
+	glm::vec3 pos2W(20.01f, -100.0f, -100.0f);
+	glm::vec3 pos3W(20.01f, 100.0f, -100.0f);
+	glm::vec3 pos4W(20.01f, 100.0f, 100.0f);
+	glm::vec3 nmW(-1.0f, 0.0f, 0.0f);
+
+	//////// Mirror camera matrices (to render scene from the mirror point of view)
+	glm::mat4 rotM = glm::rotate(glm::mat4(1), 4.7f, { 0, 1, 0 });
+	Camera cameraMirror(glm::vec3(20.0f, 10.0f, 0.0f));
+	glm::mat4 CameraMatrixMirror = rotM * cameraMirror.GetViewMatrix();
+	glm::mat4 ProjectionMatrixMirror = glm::perspective(cameraMirror.Zoom, (float)mWidth / (float)mHeight, 0.1f, 1000.0f);
+	glm::vec3 cameraPositionMirror = cameraMirror.Position;
+
+	//////// Camera matrices (principal view)
+	glm::mat4 CameraMatrix, ProjectionMatrix;
+	glm::vec3 cameraPosition;
+
+	//////// Ball view
+	btVector3 ballPos = btVector3(0, 3, 44);
+
+	//////// Object matrices (rotation, translation, scaling)
+	glm::mat4 matBall, matPin1, matPin2, matPin3, matPin4, matPin5, matPin6, matPin7, matPin8, matPin9, matPin10;
+	glm::mat4 scaleMatrixGround = glm::scale(glm::mat4(1.f), glm::vec3(15, 1, 30));
+	glm::mat4 transMatrixGround = glm::translate(glm::mat4(1.f), glm::vec3(0, 0, 15));
+	glm::mat4 scaleMatrixSp = glm::scale(glm::mat4(1.f), glm::vec3(5, 5, 5));
+	glm::mat4 transMatrixSp = glm::translate(glm::mat4(1.f), glm::vec3(-5, 24, -15));
+	glm::mat4 translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 1.01, 0));
+	glm::mat4 scaleMatrixSkybox = glm::scale(glm::mat4(1.f), glm::vec3(100, 100, 100));
+	glm::mat4 rotMirror = glm::rotate(glm::mat4(1.0f), 1.5708f, glm::vec3(0, 1, 0));  //rotation of 90 degree
+	glm::mat4 scaleMirror = glm::scale(glm::mat4(1.0f), glm::vec3(15, 15, 15));
+	glm::mat4 transMirror = glm::translate(glm::mat4(1.0f), cameraPositionMirror);
+	glm::mat4 translationMatrixLamp = glm::translate(glm::mat4(1.f), pointLightPositions[4]);
+	glm::mat4 translationMatrixLamp2 = glm::translate(glm::mat4(1.f), pointLightPositions[3]);
+	glm::mat4 scaleLamp3 = glm::scale(glm::mat4(1.0f), glm::vec3(0.2, 0.2, 0.2));
+	glm::mat4 translationMatrixLamp3;
+
 
 	////////////////////////////// CREATE NEEDED VAOS, TEXTURES, ... ////////////////////////
+
 	GLuint VAO_cube = createCubeVAO();
 	GLuint VAO_rectangle = createRectVAO();
-	GLuint VAO_triangle = createTriangleVAO();
 	GLuint texture = createSkyboxTexture();
-	GLuint VAO_bump_map = BumpMappingVAO();
-	GLuint texture_diffuse = create2DTexture("FloorDiffuse.PNG");
-	GLuint texture_normal = create2DTexture("FloorNormal.png");
-	GLuint VAO_bezier = BezierVAO();
-	GLuint bowtext = create2DTexture("bow.png");
+	GLuint VAO_bump_map_floor = BumpMappingVAO(pos1G, pos2G, pos3G, pos4G, nmG, 1.0f);
+	GLuint FloorDiffuse = create2DTexture("FloorDiffuse.PNG");
+	GLuint FloorNormal = create2DTexture("FloorNormal.png");
+	GLuint VAO_bump_map_wall = BumpMappingVAO(pos1W, pos2W, pos3W, pos4W, nmW, 10.0f);
+	GLuint WallDiffuse = create2DTexture("brickDiffuse.png");
+	GLuint WallNormal = create2DTexture("brickNormal.png");
 
 
 	//////////////////////////// CREATION OF THE SHADERS  /////////////////////////////////////
 
-	Shader s("simple.vert", 
-		"simple.frag");
-	s.compile();										// Don't forget to Compile
-	Shader smov("light.vert", 
-		"light.frag");
-	smov.compile();
-	Shader srefr("refraction.vert",
-		"refraction.frag");
-	srefr.compile();
-	Shader skyboxShader("skybox.vert", 
-		"skybox.frag");
+	Shader simple("simple.vert", "simple.frag");
+	simple.compile();										// Don't forget to Compile
+	Shader phong_plus_refl("light.vert", "light.frag");
+	phong_plus_refl.compile();
+	Shader skyboxShader("skybox.vert", "skybox.frag");
 	skyboxShader.compile();
-	Shader s3("fire.vert", 
-		"fire.frag");
-	s3.compile();
-	Shader s2("bump.vert",
-		"bump.frag");
-	s2.compile();
+	Shader particleShader("fire.vert", "fire.frag");
+	particleShader.compile();
+	Shader bumpShader("bump.vert", "bump.frag");
+	bumpShader.compile();
+	Shader refractionShader("chromaticAberration.vert", "chromaticAberration.frag");
+	refractionShader.compile();
+	Shader mirrorShader("2Dtext.vert", "2Dtext.frag");
+	mirrorShader.compile();
 
 
 
-	///////////////////////// ENABLE DEPTH TEST //////////////////////////////////////////
-	glEnable(GL_DEPTH_TEST);
-	// Accept fragment if it closer to the camera than the former one
-	//glDepthFunc(GL_LESS);
+	//////////////////////////// CREATION OF THE FRAMEBUFFER  /////////////////////////////////////
+
+	// Creation of the framebuffer
+	GLuint fbo;
+	glGenFramebuffers(1, &fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+	// Texture
+	GLuint textureColorbuffer;
+	glGenTextures(1, &textureColorbuffer);
+	glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+	// Give an empty image to OpenGL ( the last "0" )
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	// Attach texture to the framebuffer 
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
+
+	// The depth renderbuffer 
+	GLuint rbo;		// use rbo for write only, no read !
+	glGenRenderbuffers(1, &rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+	// Always check that our framebuffer is ok
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);	// back to default framebuffer
+
 
 
 	////////////////////////// WHILE LOOP ///////////////////////////////////////////////
 
+
 	while (glfwWindowShouldClose(mWindow) == false) {
+
+		time = glfwGetTime();
 		showFPS();
 
-		// Background Fill Color
-		glClearColor(0.00f, 1.00f, 1.00f, 1.0f);
-		// Clear color buffer and depth buffer
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// Variation day - night 
+		luminosity = sin(time * 0.1) * 2;
+		if (luminosity < 0.15) {
+			luminosity = 0.15;
+		}
 
-		glDepthMask(GL_FALSE);		// Remove depth writing
+		if (throwBall) {
+			createBall();
+			renderBall = true;
+		}
+
+		pointLightPositions[2] = glm::vec3(5*sin(time), 3, cos(time) + 44);
+		translationMatrixLamp3 = glm::translate(glm::mat4(1.f), pointLightPositions[2]);
 
 
-									/////////////////////// DEFINE MATRICES /////////////////////////////////////////
+		/////////////////////// DEFINE MATRICES /////////////////////////////////////////
 
-		glm::mat4 CameraMatrix = glm::lookAt(cameraPosition, cameraTarget, upVector);
-		glm::mat4 ProjectionMatrix = glm::perspective(glm::radians(fov), (float)width / (float)height, 0.5f, 100.0f);
-		rotationMatrix = glm::rotate(glm::rotate(rotationMatrix, rot_y, { 0, 1, 0 }), rot_x, { 1, 0, 0 });
+		//////// Camera matrices
+
+		rot = glm::rotate(glm::rotate(rot, rot_y, { 0, 1, 0 }), rot_x, { 1, 0, 0 });
 		rot_x = 0;
 		rot_y = 0;	//reset, otherwise it keeps rotating
 
-		double time = glfwGetTime();
-		//CameraMatrix = glm::lookAt(glm::vec3(cos(time), 0.0, sin(time)), cameraTarget, upVector);			//Session 2, "make it spin"
+		Do_Movement();
+		if (renderBall) ballPos = bodyBall->getCenterOfMassPosition();
+		if (ballView) camera.Position = glm::vec3(ballPos[0], ballPos[1], ballPos[2] - 1.3);
+		CameraMatrix = rot * camera.GetViewMatrix();
+		ProjectionMatrix = glm::perspective(camera.Zoom, (float)mWidth / (float)mHeight, 0.1f, 1000.0f);
+		cameraPosition = camera.Position;
 
 
+		//////// Model matrices
 
-		///////////////// SKYBOX ////////////////////
-
-
-		glDepthMask(GL_FALSE);
-
-		skyboxShader.use();							// Use shader
-
-		glm::mat4 scaleMatrixSkybox = glm::scale(glm::mat4(1.f), glm::vec3(50, 50, 50));
-		glm::mat4 translationMatrixSkybox = glm::translate(glm::mat4(1.f), glm::vec3(0, 0, 0));
-		skyboxShader.setMatrix4("View", CameraMatrix);				// "give info to shaders"
-		skyboxShader.setMatrix4("Projection", ProjectionMatrix);
-		skyboxShader.setMatrix4("Rotation", rotationMatrix * translationMatrixSkybox * scaleMatrixSkybox);
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
-		skyboxShader.setInteger("skybox", 0);
-		glBindVertexArray(VAO_cube);
-		glDrawArrays(GL_TRIANGLES, 0, 12 * 3);
-		glBindVertexArray(VAO_cube);
-		glDepthMask(GL_TRUE);	// Reenable depth writing
-
-
-								// Update dynamics
+		// Update dynamics
 		if (myWorld)
 		{
-			//printf("%d", DetectCollision(myWorld));
-			myWorld->stepSimulation(0.01);
+			myWorld->stepSimulation(0.1);
 		}
 
-		// We get the matrices we neeed to apply to our objects
-		
-	//	myMotionStateBall->m_graphicsWorldTrans.getOpenGLMatrix(matrixBall);
-		glm::mat4 matBall = components.renderSphere(bodyBall);
+		// Get matrices we neeed to apply to our objects
 		myMotionStatePin1->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin1);
 		myMotionStatePin2->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin2);
 		myMotionStatePin3->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin3);
@@ -446,140 +493,197 @@ int main(int argc, char * argv[]) {
 		myMotionStatePin9->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin9);
 		myMotionStatePin10->m_graphicsWorldTrans.getOpenGLMatrix(matrixPin10);
 
-		// We render the objects with the transformations applied to them
-
-		/////////// Ball rendering
-
-		smov.use();							// Use shader
-
-		glm::mat4 scaleMatrixBall = glm::scale(glm::mat4(1.f), glm::vec3(1, 1, 1));
-
-		/*glm::mat4 matBall = glm::mat4(matrixBall[0], matrixBall[1], matrixBall[2], matrixBall[3],  // first column
-			matrixBall[4], matrixBall[5], matrixBall[6], matrixBall[7],  // second column
-			matrixBall[8], matrixBall[9], matrixBall[10], matrixBall[11],  // third column
-			matrixBall[12], matrixBall[13], matrixBall[14], matrixBall[15]); // fourth column);*/
 
 
+		///////////// FIRST PASS - DRAW OFF SCREEN (RENDER ON TEXTURE) ///////////////////
 
-		smov.setVector3f("lightColor", lightColor);
-		smov.setVector3f("lightPos", lightPos);
-		smov.setVector3f("objectColor", ballColor);
-		smov.setVector3f("camPos", cameraPosition);
-		smov.setMatrix4("View", CameraMatrix);
-		smov.setMatrix4("Projection", ProjectionMatrix);
-		smov.setMatrix4("Model", rotationMatrix * matBall * scaleMatrixBall);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
+
+
+		//////// Ball rendering : lighting + skybox reflection
+
+		phong_plus_refl.use();
+		phong_plus_refl.setVector3f("pointLights[0].position", pointLightPositions[0]);
+		phong_plus_refl.setVector3f("pointLights[0].color", pointLightColors[0]);
+		phong_plus_refl.setFloat("pointLights[0].attenuation", pointLightAttenuations[0]);
+		phong_plus_refl.setVector3f("pointLights[1].position", pointLightPositions[1]);
+		phong_plus_refl.setVector3f("pointLights[1].color", pointLightColors[1]);
+		phong_plus_refl.setFloat("pointLights[1].attenuation", pointLightAttenuations[1]);
+		phong_plus_refl.setVector3f("pointLights[2].position", pointLightPositions[2]);
+		phong_plus_refl.setVector3f("pointLights[2].color", pointLightColors[2]);
+		phong_plus_refl.setFloat("pointLights[2].attenuation", pointLightAttenuations[2]);
+		phong_plus_refl.setVector3f("pointLights[3].position", pointLightPositions[3]);
+		phong_plus_refl.setVector3f("pointLights[3].color", pointLightColors[3]);
+		phong_plus_refl.setFloat("pointLights[3].attenuation", pointLightAttenuations[3]);
+		phong_plus_refl.setVector3f("pointLights[4].position", pointLightPositions[4]);
+		phong_plus_refl.setVector3f("pointLights[4].color", pointLightColors[0]);
+		phong_plus_refl.setFloat("pointLights[4].attenuation", pointLightAttenuations[4]);
+		phong_plus_refl.setVector3f("pointLights[5].position", pointLightPositions[5]);
+		phong_plus_refl.setVector3f("pointLights[5].color", pointLightColors[0]);
+		phong_plus_refl.setFloat("pointLights[5].attenuation", pointLightAttenuations[5]);
+		phong_plus_refl.setVector3f("camPos", cameraPositionMirror);
+		phong_plus_refl.setMatrix4("View", CameraMatrixMirror);
+		phong_plus_refl.setMatrix4("Projection", ProjectionMatrixMirror);
+		phong_plus_refl.setFloat("luminosity", luminosity);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
-		smov.setInteger("skybox", 0);
-		smov.setFloat("percReflection", 0.2);
+		phong_plus_refl.setInteger("skybox", 0);
+		phong_plus_refl.setFloat("percReflection", 0.3);
 		glDepthMask(GL_TRUE);
-		ball.Draw(smov);
 
-		/////////// Pins rendering
+		// Render ball only if a ball was thrown
+		if (renderBall) {
+			myMotionStateBall->m_graphicsWorldTrans.getOpenGLMatrix(matrixBall);
+			matBall = bulletMatToOpenGLMat(matrixBall);
+			phong_plus_refl.setVector3f("objectColor", ballColor);
+			phong_plus_refl.setMatrix4("Model", matBall);
+			ball.Draw(phong_plus_refl);
+		}
 
-		smov.setVector3f("objectColor", pinColor);
-		smov.setFloat("percReflection", 0);
+
+		//////// Pins rendering : lighting only (same shader than for ball)
+
+		phong_plus_refl.setVector3f("objectColor", pinColor);
+		phong_plus_refl.setFloat("percReflection", 0);
 
 		// Pin 1
-		glm::mat4 matPin1 = bulletMatToOpenGLMat(matrixPin1);
-		smov.setMatrix4("Model", rotationMatrix * matPin1);
-		pin.Draw(smov);
+		matPin1 = bulletMatToOpenGLMat(matrixPin1);
+		phong_plus_refl.setMatrix4("Model", matPin1);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 2
-		glm::mat4 matPin2 = bulletMatToOpenGLMat(matrixPin2);
-		smov.setMatrix4("Model", rotationMatrix * matPin2);
-		pin.Draw(smov);
+		matPin2 = bulletMatToOpenGLMat(matrixPin2);
+		phong_plus_refl.setMatrix4("Model", matPin2);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 3
-		glm::mat4 matPin3 = bulletMatToOpenGLMat(matrixPin3);
-		smov.setMatrix4("Model", rotationMatrix * matPin3);
-		pin.Draw(smov);
+		matPin3 = bulletMatToOpenGLMat(matrixPin3);
+		phong_plus_refl.setMatrix4("Model", matPin3);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 4
-		glm::mat4 matPin4 = bulletMatToOpenGLMat(matrixPin4);
-		smov.setMatrix4("Model", rotationMatrix * matPin4);
-		pin.Draw(smov);
+		matPin4 = bulletMatToOpenGLMat(matrixPin4);
+		phong_plus_refl.setMatrix4("Model", matPin4);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 5
-		glm::mat4 matPin5 = bulletMatToOpenGLMat(matrixPin5);
-		smov.setMatrix4("Model", rotationMatrix * matPin5);
-		pin.Draw(smov);
+		matPin5 = bulletMatToOpenGLMat(matrixPin5);
+		phong_plus_refl.setMatrix4("Model", matPin5);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 6
-		glm::mat4 matPin6 = bulletMatToOpenGLMat(matrixPin6);
-		smov.setMatrix4("Model", rotationMatrix * matPin6);
-		pin.Draw(smov);
+		matPin6 = bulletMatToOpenGLMat(matrixPin6);
+		phong_plus_refl.setMatrix4("Model", matPin6);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 7
-		glm::mat4 matPin7 = bulletMatToOpenGLMat(matrixPin7);
-		smov.setMatrix4("Model", rotationMatrix * matPin7);
-		pin.Draw(smov);
+		matPin7 = bulletMatToOpenGLMat(matrixPin7);
+		phong_plus_refl.setMatrix4("Model", matPin7);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 8
-		glm::mat4 matPin8 = bulletMatToOpenGLMat(matrixPin8);
-		smov.setMatrix4("Model", rotationMatrix * matPin8);
-		pin.Draw(smov);
+		matPin8 = bulletMatToOpenGLMat(matrixPin8);
+		phong_plus_refl.setMatrix4("Model", matPin8);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 9
-		glm::mat4 matPin9 = bulletMatToOpenGLMat(matrixPin9);
-		smov.setMatrix4("Rotation", rotationMatrix * matPin9);
-		pin.Draw(smov);
+		matPin9 = bulletMatToOpenGLMat(matrixPin9);
+		phong_plus_refl.setMatrix4("Model", matPin9);
+		pin.Draw(phong_plus_refl);
 
 		// Pin 10
-		glm::mat4 matPin10 = bulletMatToOpenGLMat(matrixPin10);
-		smov.setMatrix4("Model", rotationMatrix * matPin10);
-		pin.Draw(smov);
+		matPin10 = bulletMatToOpenGLMat(matrixPin10);
+		phong_plus_refl.setMatrix4("Model", matPin10);
+		pin.Draw(phong_plus_refl);
 
 
-		///////////// The second shooted ball //////////////////
-		srefr.use();
-		
+		//////// Ground rendering : simple shader 
 
-		if (combinationmatrix[0][0] != 0) {
-			combinationmatrix = components.renderSphere(shooterball);
-		}
-
-		else {
-			combinationmatrix;
-		}
-
-
-		srefr.setVector3f("lightColor", lightColor);
-		srefr.setVector3f("lightPos", lightPos);
-		srefr.setVector3f("objectColor", ballColor);
-		srefr.setVector3f("camPos", cameraPosition);
-		srefr.setMatrix4("View", CameraMatrix);
-		srefr.setMatrix4("Projection", ProjectionMatrix);
-		srefr.setMatrix4("Model", rotationMatrix * combinationmatrix * scaleMatrixBall);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
-		srefr.setInteger("skybox", 0);
-		srefr.setFloat("percReflection", 0.2);
-		glDepthMask(GL_TRUE);
-		ball.Draw(srefr);
-
-
-		/////////// Ground rendering
-
-		s.use();							// Use shader
-		s.setVector4f("myColorAA", glm::vec4(1.0, 0.7, 0.4, 1.0));
-
-		glm::mat4 scaleMatrixGround = glm::scale(glm::mat4(1.f), glm::vec3(15, 1, 15));
-
-		s.setMatrix4("View", CameraMatrix);
-		s.setMatrix4("Projection", ProjectionMatrix);
-		s.setMatrix4("Rotation", rotationMatrix * scaleMatrixGround);
-
+		simple.use();
+		simple.setVector4f("myColorAA", groundColor);
+		simple.setMatrix4("View", CameraMatrixMirror);
+		simple.setMatrix4("Projection", ProjectionMatrixMirror);
+		simple.setMatrix4("Model", transMatrixGround * scaleMatrixGround);
 		glBindVertexArray(VAO_cube);
 		glDrawArrays(GL_TRIANGLES, 0, 36);
 		glBindVertexArray(0);
 
 
+		//////// Sphere rendering : refraction (with chromatic aberration)
+
+		refractionShader.use();
+		refractionShader.setVector3f("camPos", cameraPositionMirror);
+		refractionShader.setMatrix4("View", CameraMatrixMirror);
+		refractionShader.setMatrix4("Projection", ProjectionMatrixMirror);
+		refractionShader.setMatrix4("Model", transMatrixSp * scaleMatrixSp);
+		refractionShader.setFloat("luminosity", luminosity);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		refractionShader.setInteger("skybox", 0);
+		sphere.Draw(refractionShader);
 
 
-		///////////////////////// PARTICLES /////////////////////////////////////
+		//////// Bump mapping on the bowling line 
+
+		bumpShader.use();
+		bumpShader.setMatrix4("View", CameraMatrixMirror);
+		bumpShader.setMatrix4("Projection", ProjectionMatrixMirror);
+		bumpShader.setMatrix4("Model", translationMatrix);
+		bumpShader.setVector3f("camPos", cameraPositionMirror);
+		bumpShader.setVector3f("pointLights[0].position", pointLightPositions[0]);
+		bumpShader.setVector3f("pointLights[0].color", pointLightColors[0]);
+		bumpShader.setFloat("pointLights[0].attenuation", pointLightAttenuations[0]);
+		bumpShader.setVector3f("pointLights[1].position", pointLightPositions[1]);
+		bumpShader.setVector3f("pointLights[1].color", pointLightColors[1]);
+		bumpShader.setFloat("pointLights[1].attenuation", pointLightAttenuations[1]);
+		bumpShader.setVector3f("pointLights[2].position", pointLightPositions[2]);
+		bumpShader.setVector3f("pointLights[2].color", pointLightColors[2]);
+		bumpShader.setFloat("pointLights[2].attenuation", pointLightAttenuations[2]);
+		bumpShader.setVector3f("pointLights[3].position", pointLightPositions[3]);
+		bumpShader.setVector3f("pointLights[3].color", pointLightColors[3]);
+		bumpShader.setFloat("pointLights[3].attenuation", pointLightAttenuations[3]);
+		bumpShader.setVector3f("pointLights[4].position", pointLightPositions[4]);
+		bumpShader.setVector3f("pointLights[4].color", pointLightColors[0]);
+		bumpShader.setFloat("pointLights[4].attenuation", pointLightAttenuations[4]);
+		bumpShader.setVector3f("pointLights[5].position", pointLightPositions[5]);
+		bumpShader.setVector3f("pointLights[5].color", pointLightColors[0]);
+		bumpShader.setFloat("pointLights[5].attenuation", pointLightAttenuations[5]);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, FloorDiffuse);
+		bumpShader.setInteger("myTextureDiffuse", 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, FloorNormal);
+		bumpShader.setInteger("myTextureNormal", 1);
+		glBindVertexArray(VAO_bump_map_floor);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+
+
+		//////// Skybox rendering
+
+		glDepthMask(GL_FALSE);
+		skyboxShader.use();
+		skyboxShader.setMatrix4("View", CameraMatrixMirror);
+		skyboxShader.setMatrix4("Projection", ProjectionMatrixMirror);
+		skyboxShader.setMatrix4("Rotation", scaleMatrixSkybox);
+		skyboxShader.setFloat("luminosity", luminosity);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		skyboxShader.setInteger("skybox", 0);
+		glBindVertexArray(VAO_cube);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(VAO_cube);
+		glDepthMask(GL_TRUE);	// Reenable depth writing
+
+
+
+		//////// Particles rendering
+
 		GLuint nbNew = 3;		// Nb of new particles at each frame
-								// Add new particles
+		// Add new particles
 		for (GLuint i = 0; i < nbNew; ++i)
 		{
 			unusedParticle = FirstUnusedParticle();
@@ -590,10 +694,10 @@ int main(int argc, char * argv[]) {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		s3.use();
-		s3.setMatrix4("View", CameraMatrix);
-		s3.setMatrix4("Projection", ProjectionMatrix);
-		s3.setMatrix4("Rotation", rotationMatrix);
+		particleShader.use();
+		particleShader.setMatrix4("View", CameraMatrixMirror);
+		particleShader.setMatrix4("Projection", ProjectionMatrixMirror);
+		particleShader.setMatrix4("Model", glm::mat4(1));
 
 		// Update all particles
 		for (GLuint i = 0; i < nbParticles; ++i) {
@@ -602,9 +706,9 @@ int main(int argc, char * argv[]) {
 			if (p.lifetime > 0.0f) {	// particle is alive, thus update
 				p.pos -= p.speed * dt;
 				p.color.a -= dt;
-				s3.setVector3f("offset", p.pos);
-				s3.setVector4f("color", p.color);
-				part.Draw(s3);
+				particleShader.setVector3f("offset", p.pos);
+				particleShader.setVector4f("color", p.color);
+				sphere.Draw(particleShader);
 			}
 		}
 		// Don't forget to reset to default blending mode
@@ -617,96 +721,264 @@ int main(int argc, char * argv[]) {
 
 
 
-		//////////////////// THIRD SHADER ///////////////////////////////////
+		///////////// SECOND PASS - DRAW ON SCREEN (DEFAULT FRAMEBUFFER) ///////////////////
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0); // back to default
+		glClearColor(0.0f, 1.0f, 1.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
-		// bump mapping
-		s2.use();							// Use shader
+		//////// Mirror rendering : use texture generated in first pass
 
-		glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.f), glm::vec3(1, 1, 1));
-		glm::mat4 translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 1.01, 0));
-		s2.setMatrix4("View", CameraMatrix);
-		s2.setMatrix4("Projection", ProjectionMatrix);
-		s2.setMatrix4("Rotation", rotationMatrix * translationMatrix * scaleMatrix);
-		s2.setVector3f("camPos", cameraPosition);
-		s2.setVector3f("lightColor", lightColor);
-		s2.setVector3f("lightPos", lightPos);
-
-		glDepthMask(GL_TRUE);	// Reenable depth writing
-
+		mirrorShader.use();
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texture_diffuse);
-		s2.setInteger("myTextureDiffuse", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, textureNameInFragmentShader"), 0);
-
-
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, texture_normal);
-		s2.setInteger("myTextureNormal", 1);
-
-		glBindVertexArray(VAO_bump_map);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		glBindVertexArray(0);
-
-
-
-
-
-
-
-		/*			// BEZIER
-		s3.use();							// Use shader
-		translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 0, 0));
-		s3.setMatrix4("View", CameraMatrix);
-		s3.setMatrix4("Projection", ProjectionMatrix);
-		s3.setMatrix4("Rotation", rotationMatrix * translationMatrix);
-		s3.setVector3f("controlPoint1", glm::vec3(-0.5,-0.5,0.0));
-		s3.setVector3f("controlPoint2", glm::vec3(sin(time), cos(time), sin(time)));
-		s3.setVector3f("controlPoint3", glm::vec3(cos(time), sin(time), cos(time)));
-		s3.setVector3f("controlPoint4", glm::vec3(0.5, 0.5, 0.0));
-
-		glDepthMask(GL_TRUE);	// Reenable depth writing
-		glBindVertexArray(VAO_bezier);
-		glDrawArrays(GL_LINE_STRIP, 0, 21);  //21 = size of t
-		glBindVertexArray(0);
-		*/
-
-		/*
-		s3.use();							// Use shader
-		s3.setMatrix4("View", CameraMatrix);
-		s3.setMatrix4("Projection", ProjectionMatrix);
-		s3.setMatrix4("Rotation", rotationMatrix);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, bowtext);
-		s3.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, textureNameInFragmentShader"), 0);
+		glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+		mirrorShader.setInteger("textureColorbuffer", 0);
+		mirrorShader.setMatrix4("Model", transMirror * rotMirror * scaleMirror);
+		mirrorShader.setMatrix4("View", CameraMatrix);
+		mirrorShader.setMatrix4("Projection", ProjectionMatrix);
 		glBindVertexArray(VAO_rectangle);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
 
-		*/
 
+		//////// Ball rendering : lighting + skybox reflection
 
-
-
-
-
-		//////////////////////// SOME OTHER CODE ////////////////////////////////
-
-		/*
+		phong_plus_refl.use();
+		phong_plus_refl.setVector3f("pointLights[0].position", pointLightPositions[0]);
+		phong_plus_refl.setVector3f("pointLights[0].color", pointLightColors[0]);
+		phong_plus_refl.setFloat("pointLights[0].attenuation", pointLightAttenuations[0]);
+		phong_plus_refl.setVector3f("pointLights[1].position", pointLightPositions[1]);
+		phong_plus_refl.setVector3f("pointLights[1].color", pointLightColors[1]);
+		phong_plus_refl.setFloat("pointLights[1].attenuation", pointLightAttenuations[1]);
+		phong_plus_refl.setVector3f("pointLights[2].position", pointLightPositions[2]);
+		phong_plus_refl.setVector3f("pointLights[2].color", pointLightColors[2]);
+		phong_plus_refl.setFloat("pointLights[2].attenuation", pointLightAttenuations[2]);
+		phong_plus_refl.setVector3f("pointLights[3].position", pointLightPositions[3]);
+		phong_plus_refl.setVector3f("pointLights[3].color", pointLightColors[3]);
+		phong_plus_refl.setFloat("pointLights[3].attenuation", pointLightAttenuations[3]);
+		phong_plus_refl.setVector3f("pointLights[4].position", pointLightPositions[4]);
+		phong_plus_refl.setVector3f("pointLights[4].color", pointLightColors[0]);
+		phong_plus_refl.setFloat("pointLights[4].attenuation", pointLightAttenuations[4]);
+		phong_plus_refl.setVector3f("pointLights[5].position", pointLightPositions[5]);
+		phong_plus_refl.setVector3f("pointLights[5].color", pointLightColors[0]);
+		phong_plus_refl.setFloat("pointLights[5].attenuation", pointLightAttenuations[5]);
+		phong_plus_refl.setVector3f("camPos", cameraPosition);
+		phong_plus_refl.setMatrix4("View", CameraMatrix);
+		phong_plus_refl.setMatrix4("Projection", ProjectionMatrix);
+		phong_plus_refl.setFloat("luminosity", luminosity);
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		s.setInteger("myTexture1", 0); // glUniform1i(glGetUniformLocation(shaderProgramID, textureNameInFragmentShader"), 0);
-		glBindVertexArray(VAO);
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		phong_plus_refl.setInteger("skybox", 0);
+		phong_plus_refl.setFloat("percReflection", 0.3);
+		glDepthMask(GL_TRUE);
+
+		if (renderBall) {
+			myMotionStateBall->m_graphicsWorldTrans.getOpenGLMatrix(matrixBall);
+			matBall = bulletMatToOpenGLMat(matrixBall);
+			phong_plus_refl.setVector3f("objectColor", ballColor);
+			phong_plus_refl.setMatrix4("Model", matBall);
+			ball.Draw(phong_plus_refl);
+		}
+
+
+		//////// Pins rendering : lighting only (same shader than for ball)
+
+		phong_plus_refl.setVector3f("objectColor", pinColor);
+		phong_plus_refl.setFloat("percReflection", 0);
+		// Pin 1
+		phong_plus_refl.setMatrix4("Model", matPin1);
+		pin.Draw(phong_plus_refl);
+		// Pin 2
+		phong_plus_refl.setMatrix4("Model", matPin2);
+		pin.Draw(phong_plus_refl);
+		// Pin 3
+		phong_plus_refl.setMatrix4("Model", matPin3);
+		pin.Draw(phong_plus_refl);
+		// Pin 4
+		phong_plus_refl.setMatrix4("Model", matPin4);
+		pin.Draw(phong_plus_refl);
+		// Pin 5
+		phong_plus_refl.setMatrix4("Model", matPin5);
+		pin.Draw(phong_plus_refl);
+		// Pin 6
+		phong_plus_refl.setMatrix4("Model", matPin6);
+		pin.Draw(phong_plus_refl);
+		// Pin 7
+		phong_plus_refl.setMatrix4("Model", matPin7);
+		pin.Draw(phong_plus_refl);
+		// Pin 8
+		phong_plus_refl.setMatrix4("Model", matPin8);
+		pin.Draw(phong_plus_refl);
+		// Pin 9
+		phong_plus_refl.setMatrix4("Model", matPin9);
+		pin.Draw(phong_plus_refl);
+		// Pin 10
+		phong_plus_refl.setMatrix4("Model", matPin10);
+		pin.Draw(phong_plus_refl);
+
+
+		//////// Ground rendering : simple shader
+
+		simple.use();
+		simple.setVector4f("myColorAA", groundColor);
+		simple.setMatrix4("View", CameraMatrix);
+		simple.setMatrix4("Projection", ProjectionMatrix);
+		simple.setMatrix4("Model", transMatrixGround * scaleMatrixGround);
+		glBindVertexArray(VAO_cube);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
 		glBindVertexArray(0);
-		//glBindVertexArray(VAO_axis);
-		//glDrawArrays(GL_LINES, 0, 6);
-		//glBindVertexArray(0);
-		//glBindVertexArray(VAO_cube);
-		//glDrawArrays(GL_TRIANGLES, 0, 12*3);
-		//glBindVertexArray(0);
-		*/
+
+		//////// White lamp on the wall rendering : simple shader (same shader than for ground)
+
+		simple.setVector4f("myColorAA", glm::vec4(pointLightColors[0], 1));
+		simple.setMatrix4("Model", translationMatrixLamp);
+		glBindVertexArray(VAO_cube);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		//////// Blue lamp on the wall rendering : simple shader (same shader than for ground)
+
+		simple.setVector4f("myColorAA", glm::vec4(pointLightColors[3], 1));
+		simple.setMatrix4("Model", translationMatrixLamp2);
+		glBindVertexArray(VAO_cube);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		//////// Green lamp rendering : simple shader (same shader than for ground)
+
+		simple.setVector4f("myColorAA", glm::vec4(pointLightColors[2], 1));
+		simple.setMatrix4("Model", translationMatrixLamp3 * scaleLamp3);
+		glBindVertexArray(VAO_cube);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
 
 
+		//////// Sphere rendering : refraction (with chromatic aberration)
+
+		refractionShader.use();
+		refractionShader.setVector3f("camPos", cameraPosition);
+		refractionShader.setMatrix4("View", CameraMatrix);
+		refractionShader.setMatrix4("Projection", ProjectionMatrix);
+		refractionShader.setMatrix4("Model", transMatrixSp * scaleMatrixSp);
+		refractionShader.setFloat("luminosity", luminosity);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		refractionShader.setInteger("skybox", 0);
+		sphere.Draw(refractionShader);
+
+
+		//////// Bump mapping on the bowling line
+
+		bumpShader.use();
+		bumpShader.setMatrix4("View", CameraMatrix);
+		bumpShader.setMatrix4("Projection", ProjectionMatrix);
+		bumpShader.setMatrix4("Model", translationMatrix);
+		bumpShader.setVector3f("camPos", cameraPosition);
+		bumpShader.setVector3f("pointLights[0].position", pointLightPositions[0]);
+		bumpShader.setVector3f("pointLights[0].color", pointLightColors[0]);
+		bumpShader.setFloat("pointLights[0].attenuation", pointLightAttenuations[0]);
+		bumpShader.setVector3f("pointLights[1].position", pointLightPositions[1]);
+		bumpShader.setVector3f("pointLights[1].color", pointLightColors[1]);
+		bumpShader.setFloat("pointLights[1].attenuation", pointLightAttenuations[1]);
+		bumpShader.setVector3f("pointLights[2].position", pointLightPositions[2]);
+		bumpShader.setVector3f("pointLights[2].color", pointLightColors[2]);
+		bumpShader.setFloat("pointLights[2].attenuation", pointLightAttenuations[2]);
+		bumpShader.setVector3f("pointLights[3].position", pointLightPositions[3]);
+		bumpShader.setVector3f("pointLights[3].color", pointLightColors[3]);
+		bumpShader.setFloat("pointLights[3].attenuation", pointLightAttenuations[3]);
+		bumpShader.setVector3f("pointLights[4].position", pointLightPositions[4]);
+		bumpShader.setVector3f("pointLights[4].color", pointLightColors[0]);
+		bumpShader.setFloat("pointLights[4].attenuation", pointLightAttenuations[4]);
+		bumpShader.setVector3f("pointLights[5].position", pointLightPositions[5]);
+		bumpShader.setVector3f("pointLights[5].color", pointLightColors[0]);
+		bumpShader.setFloat("pointLights[5].attenuation", pointLightAttenuations[5]);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, FloorDiffuse);
+		bumpShader.setInteger("myTextureDiffuse", 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, FloorNormal);
+		bumpShader.setInteger("myTextureNormal", 1);
+		glBindVertexArray(VAO_bump_map_floor);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+
+
+		//////// Bump mapping on the wall
+
+		bumpShader.setMatrix4("Model", glm::mat4(1));
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, WallDiffuse);
+		bumpShader.setInteger("myTextureDiffuse", 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, WallNormal);
+		bumpShader.setInteger("myTextureNormal", 1);
+		glBindVertexArray(VAO_bump_map_wall);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+
+
+		//////// Skybox rendering
+
+		glDepthMask(GL_FALSE);
+
+		skyboxShader.use();
+		skyboxShader.setMatrix4("View", CameraMatrix);
+		skyboxShader.setMatrix4("Projection", ProjectionMatrix);
+		skyboxShader.setMatrix4("Rotation", scaleMatrixSkybox);
+		skyboxShader.setFloat("luminosity", luminosity);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+		skyboxShader.setInteger("skybox", 0);
+		glBindVertexArray(VAO_cube);
+		glDrawArrays(GL_TRIANGLES, 0, 12 * 3);
+		glBindVertexArray(VAO_cube);
+		glDepthMask(GL_TRUE);	// Reenable depth writing
+
+
+
+		//////// Particles rendering
+
+		// Add new particles
+		for (GLuint i = 0; i < nbNew; ++i)
+		{
+			unusedParticle = FirstUnusedParticle();
+			newParticle(particles[unusedParticle], glm::vec3(0, 1, -15));
+		}
+
+		glDepthMask(GL_FALSE);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		particleShader.use();
+		particleShader.setMatrix4("View", CameraMatrix);
+		particleShader.setMatrix4("Projection", ProjectionMatrix);
+		particleShader.setMatrix4("Model", glm::mat4(1));
+
+		// Update all particles
+		for (GLuint i = 0; i < nbParticles; ++i) {
+			Particle &p = particles[i];
+			p.lifetime -= dt; // reduce life
+			if (p.lifetime > 0.0f) {	// particle is alive, thus update
+				p.pos -= p.speed * dt;
+				p.color.a -= dt;
+				particleShader.setVector3f("offset", p.pos);
+				particleShader.setVector4f("color", p.color);
+				sphere.Draw(particleShader);
+			}
+		}
+		// Don't forget to reset to default blending mode
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_BLEND);
+		glDepthMask(GL_TRUE);
+
+
+
+		///////////////////////////// END OF RENDERING /////////////////////////////////
+
+		throwBall = false;
 
 		// Flip Buffers and Draw
 		glfwSwapBuffers(mWindow);
@@ -714,17 +986,35 @@ int main(int argc, char * argv[]) {
 	}
 
 
+	// Cleanup.
+	for (int i = myWorld->getNumCollisionObjects() - 1; i >= 0; --i) {
+		btCollisionObject* obj = myWorld->getCollisionObjectArray()[i];
+		btRigidBody* body = btRigidBody::upcast(obj);
+		if (body && body->getMotionState()) {
+			delete body->getMotionState();
+		}
+		myWorld->removeCollisionObject(obj);
+		delete obj;
+	}
+	delete ballShape;
+	delete groundShape;
+	delete groundShapeSkybox;
+	delete shapePin;
+	delete myWorld;
+	delete mySequentialImpulseConstraintSolver;
+	delete myCollisionConfiguration;
+	delete myDispatcher;
+	delete myBroadphase;
+	glDeleteFramebuffers(1, &fbo);
+	glDeleteVertexArrays(1, &VAO_cube);
+	glDeleteVertexArrays(1, &VAO_rectangle);
+	glDeleteVertexArrays(1, &VAO_bump_map_floor);
+	glDeleteTextures(1, &texture);
+	glDeleteTextures(1, &FloorDiffuse);
+	glDeleteTextures(1, &FloorNormal);
 	glfwTerminate();
 	return EXIT_SUCCESS;
 }
-
-
-
-
-
-
-
-
 
 
 
@@ -758,15 +1048,6 @@ static void key_callback(GLFWwindow* window, int key, int /*scancode*/, int acti
 	if (keys[GLFW_KEY_ESCAPE])
 		glfwSetWindowShouldClose(window, GL_TRUE);
 
-	if (keys[GLFW_KEY_SPACE]) {
-			shooterball = components.addSphere(1.0, 0, 2, 4, 7.26);
-			shooterball->activate(true);
-			shooterball->applyCentralImpulse(btVector3(+0.0f, 0.0f, -80.0f));
-			combinationmatrix = components.renderSphere(shooterball);  // it needs to be updated every loop
-			cout << "You have pressed the shooting button!" << endl;
-			//	cout<< combinationmatrix[]
-		}
-
 	// V-SYNC
 	if (keys[GLFW_KEY_U]) {
 		static bool vsync = true;
@@ -780,29 +1061,30 @@ static void key_callback(GLFWwindow* window, int key, int /*scancode*/, int acti
 	}
 
 	if ((keys[GLFW_KEY_0] || keys[GLFW_KEY_KP_0])) {
-		std::cout << "You have pressed 0" << std::endl;
+		throwBall = true;
+		std::cout << "Ball thrown" << std::endl;
 	}
 
-	// https://learnopengl.com/Getting-started/Camera // To move 
+	if (keys[GLFW_KEY_N]) {
+		ballView = !ballView;
+		if (!ballView) camera.Position = glm::vec3(0.0f, 15.0f, 70.0f);
+	}
+
 	float cameraSpeed = 0.05f; // adjust accordingly
-
-	if (keys[GLFW_KEY_UP]) {
+	if (keys[GLFW_KEY_W])
 		rot_x = cameraSpeed;
-	}
-	if (keys[GLFW_KEY_DOWN]) {
+	if (keys[GLFW_KEY_S])
 		rot_x = -cameraSpeed;
-	}
-	if (keys[GLFW_KEY_LEFT]) {
+	if (keys[GLFW_KEY_A])
 		rot_y = cameraSpeed;
-	}
-
-	if (keys[GLFW_KEY_RIGHT]) {
+	if (keys[GLFW_KEY_D])
 		rot_y = -cameraSpeed;
-	}
+
+
 
 }
 
-static void mouse_button_callback(GLFWwindow* /*window*/, int button, int action, int /*mods*/) {
+static void mouse_button_callback(GLFWwindow* window, int button, int action, int /*mods*/) {
 	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 		keys[GLFW_MOUSE_BUTTON_RIGHT] = true;
 	else
@@ -821,202 +1103,102 @@ static void mouse_button_callback(GLFWwindow* /*window*/, int button, int action
 
 
 
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
-{
-	/*
-	if (keys[GLFW_MOUSE_BUTTON_RIGHT]) {
-	std::cout << "Mouse Position : (" << xpos << ", " << ypos << ")" << std::endl;
-	}
-	*/
-	float cameraSpeed = 0.05f; // adjust accordingly
-	if (keys[GLFW_MOUSE_BUTTON_LEFT]) {
-		if (xpos_prev - xpos > 0) {
-			rot_y = -cameraSpeed;
-		}
-		else if (xpos_prev - xpos < 0) {
-			rot_y = +cameraSpeed;
-		}
-		if (ypos_prev - ypos > 0) {
-			rot_x = -cameraSpeed;
-		}
-		else if (ypos_prev - ypos < 0) {
-			rot_x = +cameraSpeed;
-		}
-	}
-	xpos_prev = xpos;
-	ypos_prev = ypos;
+
+
+void Do_Movement() {
+	if (keys[GLFW_KEY_UP])  camera.ProcessKeyboard(FORWARD, deltaTime);
+	if (keys[GLFW_KEY_DOWN])    camera.ProcessKeyboard(BACKWARD, deltaTime);
+	if (keys[GLFW_KEY_LEFT])    camera.ProcessKeyboard(LEFT, deltaTime);
+	if (keys[GLFW_KEY_RIGHT])    camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
-void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset)
-{
-	/*
-	if (keys[GLFW_MOUSE_BUTTON_LEFT]) {
-	std::cout << "Mouse Offset : " << yoffset << std::endl;
-	}
-	*/
-	/*
-	float cameraSpeed = 0.05f; // adjust accordingly
-	cameraFront = cameraPosition - cameraTarget;
-	if (yoffset < 0) {
-	cameraPosition += cameraSpeed * cameraFront;
-	}
-	if (yoffset > 0) {
-	cameraPosition -= cameraSpeed * cameraFront;
-	}
-	*/
+void createBall() {
 
-	if (fov < 10.0f) {
-		fov = 10.0f;
-	}
-	else if (fov <= 90.0f) {
-		fov -= yoffset;
-	}
-	else {
-		fov = 90.0f;
-	}
+	if (!firstThrow)
+		myWorld->removeCollisionObject(bodyBall);
 
+	// Creation of the collision shape
+	ballShape = new btSphereShape(1.0);
+
+	myTransformBall.setIdentity();
+	myTransformBall.setOrigin(btVector3(0, 3, 44)); 
+
+	btVector3 localInertia;
+	btScalar mass = 1.5f;		// mass != 0 -> dynamic
+	ballShape->calculateLocalInertia(mass, localInertia);
+
+	//using motionstate is recommended, it provides interpolation capabilities, and only synchronizes 'active' objects
+	myMotionStateBall = new btDefaultMotionState(myTransformBall);
+	btRigidBody::btRigidBodyConstructionInfo rbInfoBall(mass, myMotionStateBall, ballShape, localInertia);
+	bodyBall = new btRigidBody(rbInfoBall);
+
+	// add angular damping (to slow down ball without affecting gravity)
+	bodyBall->setDamping(0, 0.5);
+	//add the body to the dynamics world
+	myWorld->addRigidBody(bodyBall);
+
+	// Add force
+	bodyBall->activate(true);
+	float forceX = (lastX - 400) / 35;
+	float forceZ = (lastY - 300) / 10;
+	bodyBall->applyCentralImpulse(btVector3(forceX, 2.0f, -abs(forceZ)));
+	firstThrow = false;
 }
 
 
 
-
-
-GLuint createTriangleVAO() {
-
-	GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f, 0.0f, 0.5f, 0.0f };      //ex7
-
-																						   /*		Session 1, question 8
-																						   GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-																						   0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-																						   0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f };
-																						   // vertex(3 coord + RGBA)
-																						   */
-
-																						   /*
-																						   GLfloat vertices[] = { -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,						//coord of the vertex + coord of the texturing im (in uv space)
-																						   0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-																						   0.0f, 0.5f, 0.0f, 0.5f, 1.0f };						//session2,ex1
-																						   */
-
-																						   // VAO contains pointer to VBO and how to interpret it (to not do it everytime we use the VBO)
-																						   // DRAWING IS DONE IN THE LOOP, BUT TRANSFER OF DATA FROM RAM to VRAM (GPU) IS DONE ONLY ONCE
-	GLuint VAO, VBO;
-	glGenVertexArrays(1, &VAO);	// Create a VAO (pointer)
-	glBindVertexArray(VAO);		// Use the VAO
-
-
-								// VBO, for triangle
-								//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
-	glGenBuffers(1, &VBO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-
-	// How to interpret datas, for session 1, ex 7 (only vertex)
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-
-
-	/*
-	// How to interpret datas, for session 1, ex 8  (vertex + color)
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (GLvoid*)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (GLvoid*)(3*sizeof(GLfloat)));
-	*/
-
-	/*
-	// How to interpret datas, for session 2, ex 1 (vertex + texture)
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-	*/
-
-	// Unbind the VAO (say that we don't use it anymore...)
-	glBindVertexArray(0);
-
-	return VAO;
+void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+	lastX = xpos; lastY = ypos;
 }
 
-
-
-GLuint createAxisVAO() {
-
-	// Axis: 2 vertices per line
-	GLfloat vertices_axis[] = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,				//origin + 1,0,0 (x axis)
-		0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
-
-	// GOOD PRACTICE: 1 VBO PER VAO (otherwise, difficult)
-	GLuint VAO_axis, VBO_axis;
-	glGenVertexArrays(1, &VAO_axis);	// Create a VAO (pointer)
-	glBindVertexArray(VAO_axis);		// Use the VAO
-
-										// VBO, for axis
-										//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
-	glGenBuffers(1, &VBO_axis);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_axis);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_axis), vertices_axis, GL_STATIC_DRAW);
-	// How to interpret datas
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-
-	// Unbind the VAO (say that we don't use it anymore...)
-	glBindVertexArray(0);
-
-	return VAO_axis;
+void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset) {
 }
-
-
 
 
 GLuint createCubeVAO() {
 
-
-	// Vertex only
 	GLfloat vertices_cube[] = {
-		-1.0f, -1.0f, -1.0f,
-		1.0f, -1.0f, -1.0f,
-		1.0f,  1.0f, -1.0f,
-		1.0f,  1.0f, -1.0f,
-		-1.0f,  1.0f, -1.0f,
-		-1.0f, -1.0f, -1.0f,
+	-1.0f, -1.0f, -1.0f,
+	 1.0f, -1.0f, -1.0f,
+	 1.0f,  1.0f, -1.0f,
+	 1.0f,  1.0f, -1.0f,
+	-1.0f,  1.0f, -1.0f,
+	-1.0f, -1.0f, -1.0f,
 
-		-1.0f, -1.0f,  1.0f,
-		1.0f, -1.0f,  1.0f,
-		1.0f,  1.0f,  1.0f,
-		1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f,  1.0f,
-		-1.0f, -1.0f,  1.0f,
+	-1.0f, -1.0f,  1.0f,
+	 1.0f, -1.0f,  1.0f,
+	 1.0f,  1.0f,  1.0f,
+	 1.0f,  1.0f,  1.0f,
+	-1.0f,  1.0f,  1.0f,
+	-1.0f, -1.0f,  1.0f,
 
-		-1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f, -1.0f,
-		-1.0f, -1.0f, -1.0f,
-		-1.0f, -1.0f, -1.0f,
-		-1.0f, -1.0f,  1.0f,
-		-1.0f,  1.0f,  1.0f,
+	-1.0f,  1.0f,  1.0f,
+	-1.0f,  1.0f, -1.0f,
+	-1.0f, -1.0f, -1.0f,
+	-1.0f, -1.0f, -1.0f,
+	-1.0f, -1.0f,  1.0f,
+	-1.0f,  1.0f,  1.0f,
 
-		1.0f,  1.0f,  1.0f,
-		1.0f,  1.0f, -1.0f,
-		1.0f, -1.0f, -1.0f,
-		1.0f, -1.0f, -1.0f,
-		1.0f, -1.0f,  1.0f,
-		1.0f,  1.0f,  1.0f,
+	 1.0f,  1.0f,  1.0f,
+	 1.0f,  1.0f, -1.0f,
+	 1.0f, -1.0f, -1.0f,
+	 1.0f, -1.0f, -1.0f,
+	 1.0f, -1.0f,  1.0f,
+	 1.0f,  1.0f,  1.0f,
 
-		-1.0f, -1.0f, -1.0f,
-		1.0f, -1.0f, -1.0f,
-		1.0f, -1.0f,  1.0f,
-		1.0f, -1.0f,  1.0f,
-		-1.0f, -1.0f,  1.0f,
-		-1.0f, -1.0f, -1.0f,
+	-1.0f, -1.0f, -1.0f,
+	 1.0f, -1.0f, -1.0f,
+	 1.0f, -1.0f,  1.0f,
+	 1.0f, -1.0f,  1.0f,
+	-1.0f, -1.0f,  1.0f,
+	-1.0f, -1.0f, -1.0f,
 
-		-1.0f,  1.0f, -1.0f,
-		1.0f,  1.0f, -1.0f,
-		1.0f,  1.0f,  1.0f,
-		1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f, -1.0f
+	-1.0f,  1.0f, -1.0f,
+	 1.0f,  1.0f, -1.0f,
+	 1.0f,  1.0f,  1.0f,
+	 1.0f,  1.0f,  1.0f,
+	-1.0f,  1.0f,  1.0f,
+	-1.0f,  1.0f, -1.0f
 
 	};
 
@@ -1025,25 +1207,17 @@ GLuint createCubeVAO() {
 	glGenVertexArrays(1, &VAO_cube);	// Create a VAO (pointer)
 	glBindVertexArray(VAO_cube);		// Use the VAO
 
-										// VBO, for axis
-										//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+	// VBO, for axis
+	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO_cube);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_cube);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_cube), vertices_cube, GL_STATIC_DRAW);
 	// How to interpret datas
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-	/*
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-	*/
 
 	// Unbind the VAO (say that we don't use it anymore...)
 	glBindVertexArray(0);
-
-	////////////////////// END OF VAO FOR CUBE ////////////////////////////////
 
 	return VAO_cube;
 }
@@ -1077,15 +1251,8 @@ GLuint create2DTexture(char const * imName) {
 
 
 GLuint createSkyboxTexture() {
-	//std::vector<std::string> textures = { "posx.jpg","negx.jpg","posy.jpg","negy.jpg" ,"testPosz.jpg","negz.jpg" };
-	std::vector<std::string> textures = { 
-		"posx.jpg",
-		"negx.jpg",
-		"posy.jpg",
-		"negy.jpg" ,
-		"posz.jpg",
-		"negz.jpg" }; // 6 images for the 6 faces of the cube
-																												//std::vector<std::string> textures = { "checkerboard.jpg","checkerboard.jpg","checkerboard.jpg","checkerboard.jpg" ,"checkerboard.jpg","checkerboard.jpg" };
+
+	std::vector<std::string> textures = { "posx.jpg","negx.jpg","posy.jpg","negy.jpg" ,"posz.jpg","negz.jpg" }; // 6 images for the 6 faces of the cube
 	GLuint texture;
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
@@ -1118,109 +1285,85 @@ GLuint createSkyboxTexture() {
 
 
 
-GLuint BumpMappingVAO() {
-
-	GLfloat vertices[] = { -15.0f, 0.0f, -15.0f,
-		15.0f, 0.0f, -15.0f,
-		-15.0f, 0.0f, 15.0f,
-		15.0f, 0.0f, -15.0f,
-		-15.0f, 0.0f, 15.0f,
-		15.0f, 0.0f, 15.0f };
-
-	GLfloat uvs[] = { 0.0f, 0.0f,
-		1.0f, 0.0f,
-		0.0f, 1.0f,
-		1.0f, 0.0f,
-		0.0f, 1.0f,
-		1.0f, 1.0f };
+GLuint BumpMappingVAO(glm::vec3 pos1, glm::vec3 pos2, glm::vec3 pos3, glm::vec3 pos4, glm::vec3 nm, float repeatFactor) {
 
 
-	GLfloat tangents[std::size(vertices) / 3] = {};
-	GLfloat bitangents[std::size(vertices) / 3] = {};
+	// texture coordinates
+	glm::vec2 uv1(0.0f, 1.0f * repeatFactor);
+	glm::vec2 uv2(0.0f, 0.0f);
+	glm::vec2 uv3(1.0f * repeatFactor, 0.0f);
+	glm::vec2 uv4(1.0f * repeatFactor, 1.0f * repeatFactor);
 
-	int j = 0;
-	for (int i = 0; i < std::size(vertices); i += 9) {		// for each triangle
+	// calculate tangent/bitangent vectors of both triangles
+	glm::vec3 tangent1, bitangent1;
+	glm::vec3 tangent2, bitangent2;
+	// triangle 1
+	// ----------
+	glm::vec3 edge1 = pos2 - pos1;
+	glm::vec3 edge2 = pos3 - pos1;
+	glm::vec2 deltaUV1 = uv2 - uv1;
+	glm::vec2 deltaUV2 = uv3 - uv1;
 
-		glm::vec3 pos1(vertices[i + 0], vertices[i + 1], vertices[i + 2]);
-		glm::vec3 pos2(vertices[i + 3], vertices[i + 4], vertices[i + 5]);
-		glm::vec3 pos3(vertices[i + 6], vertices[i + 7], vertices[i + 8]);
+	GLfloat f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
 
-		glm::vec2 uv1(uvs[i + 0 - j * 3], uvs[i + 1 - j * 3]);
-		glm::vec2 uv2(uvs[i + 2 - j * 3], uvs[i + 3 - j * 3]);
-		glm::vec2 uv3(uvs[i + 4 - j * 3], uvs[i + 5 - j * 3]);
-		j += 1;
+	tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+	tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+	tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+	tangent1 = glm::normalize(tangent1);
 
-		glm::vec3 edge1 = pos2 - pos1;
-		glm::vec3 edge2 = pos3 - pos1;
-		glm::vec2 deltaUV1 = uv2 - uv1;
-		glm::vec2 deltaUV2 = uv3 - uv1;
+	bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+	bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+	bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+	bitangent1 = glm::normalize(bitangent1);
 
-		float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-		glm::vec3 tangent = (edge1 * deltaUV2.y - edge2 * deltaUV1.y) * f;
-		glm::vec3 bitangent = (edge2 * deltaUV1.x - edge1 * deltaUV2.x) * f;
+	// triangle 2
+	// ----------
+	edge1 = pos3 - pos1;
+	edge2 = pos4 - pos1;
+	deltaUV1 = uv3 - uv1;
+	deltaUV2 = uv4 - uv1;
 
-		tangents[i / 3] = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
-		tangents[i / 3 + 1] = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-		tangents[i / 3 + 2] = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+	f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
 
-		bitangents[i / 3] = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
-		bitangents[i / 3 + 1] = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
-		bitangents[i / 3 + 2] = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
-
-	}
-
-
-	// VAO contains pointer to VBO and how to interpret it (to not do it everytime we use the VBO)
-	// DRAWING IS DONE IN THE LOOP, BUT TRANSFER OF DATA FROM RAM to VRAM (GPU) IS DONE ONLY ONCE
-	GLuint VAO;
-	glGenVertexArrays(1, &VAO);	// Create a VAO (pointer)
-	glBindVertexArray(VAO);		// Use the VAO
-
-	GLuint verticesBuffer;
-	glGenBuffers(1, &verticesBuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, verticesBuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	GLuint uvsBuffer;
-	glGenBuffers(1, &uvsBuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, uvsBuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(uvs), uvs, GL_STATIC_DRAW);
-
-	GLuint tangentsBuffer;
-	glGenBuffers(1, &tangentsBuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(tangents), tangents, GL_STATIC_DRAW);
-
-	GLuint bitangentsBuffer;
-	glGenBuffers(1, &bitangentsBuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(bitangents), bitangents, GL_STATIC_DRAW);
+	tangent2.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+	tangent2.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+	tangent2.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+	tangent2 = glm::normalize(tangent2);
 
 
+	bitangent2.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+	bitangent2.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+	bitangent2.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+	bitangent2 = glm::normalize(bitangent2);
 
-	// How to interpret datas
 
-	// 1rst attribute buffer : vertices
+	float quadVertices[] = {
+		// positions            // normal         // texcoords  // tangent                          // bitangent
+		pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+		pos2.x, pos2.y, pos2.z, nm.x, nm.y, nm.z, uv2.x, uv2.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+		pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+
+		pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+		pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+		pos4.x, pos4.y, pos4.z, nm.x, nm.y, nm.z, uv4.x, uv4.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z
+	};
+	// configure plane VAO
+	GLuint VAO, VBO;
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glBindVertexArray(VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
 	glEnableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, verticesBuffer);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-
-	// 2nd attribute buffer : UVs
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(1);
-	glBindBuffer(GL_ARRAY_BUFFER, uvsBuffer);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (GLvoid*)0);
-
-	// 3rd attribute buffer : tangents
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(3 * sizeof(float)));
 	glEnableVertexAttribArray(2);
-	glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
-	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-
-	// 4th attribute buffer : bitangents
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(6 * sizeof(float)));
 	glEnableVertexAttribArray(3);
-	glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
-	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
-
-
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(8 * sizeof(float)));
+	glEnableVertexAttribArray(4);
+	glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(11 * sizeof(float)));
 
 	// Unbind the VAO (say that we don't use it anymore...)
 	glBindVertexArray(0);
@@ -1230,39 +1373,16 @@ GLuint BumpMappingVAO() {
 
 
 
-GLuint BezierVAO() {
-
-	GLfloat t[] = { 0.0,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95,1.0 };
-
-	GLuint VAO_bezier, VBO_bezier;
-	glGenVertexArrays(1, &VAO_bezier);	// Create a VAO (pointer)
-	glBindVertexArray(VAO_bezier);		// Use the VAO
-
-										// VBO, for axis
-										//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
-	glGenBuffers(1, &VBO_bezier);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_bezier);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(t), t, GL_STATIC_DRAW);
-	// How to interpret datas
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, 1 * sizeof(GLfloat), (GLvoid*)0);
-
-	// Unbind the VAO (say that we don't use it anymore...)
-	glBindVertexArray(0);
-
-	return VAO_bezier;
-}
-
 
 GLuint createRectVAO() {
 
 
-	GLfloat vertices[] = { -1.0f, 0.0f, -3.0f, 0.0f, 0.0f,
-		1.0f, 0.0f, -3.0f, 1.0f, 0.0f,
-		-1.0f, 0.0f, 3.0f, 0.0f, 1.0f,
-		1.0f, 0.0f, -3.0f, 1.0f, 0.0f,
-		-1.0f, 0.0f, 3.0f, 0.0f, 1.0f,
-		1.0f, 0.0f, 3.0f, 1.0f, 1.0f };
+	GLfloat vertices[] = { -0.5f, 0.5f, 0.0f, 1.0f,
+							-0.5f, -0.5f, 0.0f, 0.0f,
+							0.5f, -0.5f, 1.0f, 0.0f,
+							-0.5f, 0.5f, 0.0f, 1.0f,
+							0.5f, -0.5f, 1.0f, 0.0f,
+							0.5f, 0.5f, 1.0f, 1.0f };
 
 
 	// VAO contains pointer to VBO and how to interpret it (to not do it everytime we use the VBO)
@@ -1272,8 +1392,8 @@ GLuint createRectVAO() {
 	glBindVertexArray(VAO);		// Use the VAO
 
 
-								// VBO, for triangle
-								//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
+	// VBO, for triangle
+	//Copy our vertices array in a buffer for OpenGL to use - Creation of VBO
 	glGenBuffers(1, &VBO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -1281,9 +1401,9 @@ GLuint createRectVAO() {
 
 	// How to interpret datas, for session 2, ex 1 (vertex + texture)
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (GLvoid*)0);
 	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
 
 
 	// Unbind the VAO (say that we don't use it anymore...)
@@ -1327,36 +1447,12 @@ void newParticle(Particle &particle, glm::vec3 objPos)
 	GLfloat randR = rand() / (float)(RAND_MAX);
 	GLfloat randG = rand() / (float)(RAND_MAX);
 	GLfloat randB = rand() / (float)(RAND_MAX);
-	particle.pos = objPos; // glm::vec3(((rand() % 100) - 50) / 500.0f, ((rand() % 100) - 50) / 500.0f, ((rand() % 100) - 50) / 500.0f);// +random;
+	particle.pos = objPos;
 	particle.color = glm::vec4(0.95, 0.7*randG, 0.1*randB, 1.0f);
 	particle.lifetime = 1.0f;
 	particle.speed = glm::vec3(2 * random, -4 * abs(random2), 2 * random3);
 
 }
-
-
-bool DetectCollision(btDiscreteDynamicsWorld* myWorld) {
-	bool IsCollision = false;
-	int numManifolds = myWorld->getDispatcher()->getNumManifolds();
-	for (int i = 0; i < numManifolds; i++)
-	{
-		btPersistentManifold* contactManifold = myWorld->getDispatcher()->getManifoldByIndexInternal(i);
-		const btCollisionObject* obA = contactManifold->getBody0();
-		const btCollisionObject* obB = contactManifold->getBody1();
-
-		if (!obA->getCollisionShape()->isNonMoving() && !obB->getCollisionShape()->isNonMoving()) {
-			IsCollision = true;
-		}
-	}
-
-	return IsCollision;
-
-}
-
-
-
-
-
 
 
 
@@ -1414,3 +1510,6 @@ glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]) {
 		bulletMat[12], bulletMat[13], bulletMat[14], bulletMat[15]); // fourth column);
 	return OpenGLMat;
 }
+
+
+

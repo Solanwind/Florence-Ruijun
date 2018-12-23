@@ -47,6 +47,7 @@ void Shader::compile() {
 	if (mTessEPath) glDeleteShader(tessEShader);
 }
 
+
 void Shader::setFloat(const GLchar *name, GLfloat value) {
 	glUniform1f(glGetUniformLocation(ID, name), value);
 }
