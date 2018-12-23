@@ -7,9 +7,7 @@ out vec4 color;
  
 uniform samplerCube skybox;
 uniform vec3 camPos;		// in world space
-uniform mat4 View;
-uniform mat4 Rotation;	// = model matrix
-
+uniform float luminosity;
 
  
 void main()
@@ -29,12 +27,6 @@ void main()
 	float nLovernTSquaredBlue = pow(nLovernTBlue,2);
 
 
-	// REFLECTION
-
-	vec3 reflection = 2 * NdotL * norm - incident;
-	reflection = vec3(inverse(Rotation) * vec4(reflection, 0.0));	// return in local (object) space (required for texture function)
-
-
 	// REFRACTION
 
 	vec3 refractionRed = nLovernTRed * incident;
@@ -45,7 +37,6 @@ void main()
 	else{
 		refractionRed = (nLovernTRed * NdotL - sqrt(kred)) * norm - refractionRed;
 	}
-	refractionRed = vec3(inverse(Rotation) * vec4(refractionRed, 0.0));
 
 	vec3 refractionGreen = nLovernTGreen * incident;
 	float kGreen = 1 - nLovernTSquaredGreen * (1 - pow(NdotL,2));
@@ -55,7 +46,6 @@ void main()
 	else{
 		refractionGreen = (nLovernTGreen * NdotL - sqrt(kGreen)) * norm - refractionGreen;
 	}
-	refractionGreen = vec3(inverse(Rotation) * vec4(refractionGreen, 0.0));
 
 	vec3 refractionBlue = nLovernTBlue * incident;
 	float kBlue = 1 - nLovernTSquaredBlue * (1 - pow(NdotL,2));
@@ -65,27 +55,12 @@ void main()
 	else{
 		refractionBlue = (nLovernTBlue * NdotL - sqrt(kBlue)) * norm - refractionBlue;
 	}
-	refractionBlue = vec3(inverse(Rotation) * vec4(refractionBlue, 0.0));
 
 
-
-	// THE TWO EFFETS COMBINED
-	// Decide which percentage is reflected, and which percentage is transmitted
+    color.ra = texture(skybox, normalize(refractionRed)).ra * luminosity;
+    color.g  = texture(skybox, normalize(refractionGreen)).g * luminosity;
+    color.b  = texture(skybox, normalize(refractionBlue)).b * luminosity;
 	
-	float percReflection =  1.0;
-	float percRefraction = 1.0 - percReflection;
-
-	vec4 colorRefr;
-    colorRefr.ra = texture(skybox, normalize(refractionRed)).ra;
-    colorRefr.g  = texture(skybox, normalize(refractionGreen)).g;
-    colorRefr.b  = texture(skybox, normalize(refractionBlue)).b;
-	
-	vec4 colorRefl = texture(skybox, normalize(reflection));
-	color = mix(colorRefr, colorRefl, percReflection);
-
-	float perc = 0.0;
-	vec4 colorObject = vec4(0.0,0.0,0.0,1.0);
-	color = mix(color, colorObject, perc);
 }
 
 
