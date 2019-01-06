@@ -57,7 +57,7 @@ GLuint FirstUnusedParticle();
 void newParticle(Particle &particle, glm::vec3 objPos);
 btTriangleMesh  * ObjToCollisionShape(std::string inputFile);
 glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]);
-void SudoCreateChild(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader test);
+void createBranch(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader test);
 
 
 
@@ -604,7 +604,7 @@ int main(int argc, char * argv[]) {
 		//////// Tree rendering : lighting only (same shader than for pins)
 
 		phong_plus_refl.setFloat("percReflection", 0.3);
-		SudoCreateChild(glm::mat4(1), 1, VAO_cube, phong_plus_refl);
+		createBranch(glm::mat4(1), 1, VAO_cube, phong_plus_refl);
 
 
 		//////// Sphere rendering : reflection (same shader than for pins)
@@ -835,7 +835,7 @@ int main(int argc, char * argv[]) {
 		//////// Tree rendering : lighting only (same shader than for pins)
 
 		phong_plus_refl.setFloat("percReflection", 0.3);
-		SudoCreateChild(glm::mat4(1), 1, VAO_cube, phong_plus_refl);
+		createBranch(glm::mat4(1), 1, VAO_cube, phong_plus_refl);
 
 
 		//////// Sphere rendering : reflection (same shader than for pins)
@@ -1539,7 +1539,7 @@ glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]) {
 }
 
 
-void SudoCreateChild(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader test)
+void createBranch(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader test)
 {
 	if (depth >= 5) {
 		return;
@@ -1561,6 +1561,6 @@ void SudoCreateChild(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader
 		glm::mat4 trans = glm::translate(glm::mat4(1), glm::vec3(0, (10-depth)/ (depth + 1), 0));
 		/// Recursively create the branches
 
-		SudoCreateChild(glm::translate(glm::mat4(1), glm::vec3(0, 6, 0)) *  rot * trans * m2w_noscale, depth + 1, VAO_cube, test);
+		createBranch(glm::translate(glm::mat4(1), glm::vec3(0, 6, 0)) *  rot * trans * m2w_noscale, depth + 1, VAO_cube, test);
 	}
 }
