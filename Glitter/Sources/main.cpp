@@ -30,7 +30,6 @@ struct Particle {
 
 
 
-
 // Callbacks
 static bool keys[1024]; // is a key pressed or not ?
 						// External static callback
@@ -58,6 +57,7 @@ GLuint FirstUnusedParticle();
 void newParticle(Particle &particle, glm::vec3 objPos);
 btTriangleMesh  * ObjToCollisionShape(std::string inputFile);
 glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]);
+void SudoCreateChild(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader test);
 
 
 
@@ -304,7 +304,7 @@ int main(int argc, char * argv[]) {
 
 	//////// Light
 	glm::vec3 pointLightPositions[] = {
-	glm::vec3(0.0f,  8.0f,  15.0f),
+	glm::vec3(-25.0f,  7.0f,  -6.0f),
 	glm::vec3(0.0f, 8.0f, -4.0f),
 	glm::vec3(3.0f,  3.0f, 40.0f),
 	glm::vec3(19.0f,  24.0f, 35.0f),
@@ -315,7 +315,7 @@ int main(int argc, char * argv[]) {
 	glm::vec3(1.0f, 0.0f, 0.0f),
 	glm::vec3(0.0f,  1.0f, 0.0f),
 	glm::vec3(0.0f,  0.0f, 1.0f) };
-	float pointLightAttenuations[] = { 0, 1, 3, 20, 7, 3 };
+	float pointLightAttenuations[] = { 3, 1, 3, 20, 7, 3 };
 
 	//////// Object colors
 	glm::vec4 groundColor = glm::vec4(1.0, 0.7, 0.4, 1.0);
@@ -356,6 +356,7 @@ int main(int argc, char * argv[]) {
 	glm::mat4 transMatrixGround = glm::translate(glm::mat4(1.f), glm::vec3(0, 0, 15));
 	glm::mat4 scaleMatrixSp = glm::scale(glm::mat4(1.f), glm::vec3(5, 5, 5));
 	glm::mat4 transMatrixSp = glm::translate(glm::mat4(1.f), glm::vec3(-5, 24, -15));
+	glm::mat4 transMatrixSp2 = glm::translate(glm::mat4(1.f), glm::vec3(-20, 5, 40));
 	glm::mat4 translationMatrix = glm::translate(glm::mat4(1.f), glm::vec3(0, 1.01, 0));
 	glm::mat4 scaleMatrixSkybox = glm::scale(glm::mat4(1.f), glm::vec3(100, 100, 100));
 	glm::mat4 rotMirror = glm::rotate(glm::mat4(1.0f), 1.5708f, glm::vec3(0, 1, 0));  //rotation of 90 degree
@@ -600,6 +601,19 @@ int main(int argc, char * argv[]) {
 		pin.Draw(phong_plus_refl);
 
 
+		//////// Tree rendering : lighting only (same shader than for pins)
+
+		phong_plus_refl.setFloat("percReflection", 0.3);
+		SudoCreateChild(glm::mat4(1), 1, VAO_cube, phong_plus_refl);
+
+
+		//////// Sphere rendering : reflection (same shader than for pins)
+
+		phong_plus_refl.setMatrix4("Model", transMatrixSp2 * scaleMatrixSp);
+		phong_plus_refl.setFloat("percReflection", 1.0);
+		sphere.Draw(refractionShader);
+
+
 		//////// Ground rendering : simple shader 
 
 		simple.use();
@@ -741,7 +755,7 @@ int main(int argc, char * argv[]) {
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
 
-
+		
 		//////// Ball rendering : lighting + skybox reflection
 
 		phong_plus_refl.use();
@@ -816,6 +830,19 @@ int main(int argc, char * argv[]) {
 		// Pin 10
 		phong_plus_refl.setMatrix4("Model", matPin10);
 		pin.Draw(phong_plus_refl);
+
+
+		//////// Tree rendering : lighting only (same shader than for pins)
+
+		phong_plus_refl.setFloat("percReflection", 0.3);
+		SudoCreateChild(glm::mat4(1), 1, VAO_cube, phong_plus_refl);
+
+
+		//////// Sphere rendering : reflection (same shader than for pins)
+
+		phong_plus_refl.setMatrix4("Model", transMatrixSp2 * scaleMatrixSp);
+		phong_plus_refl.setFloat("percReflection", 1.0);
+		sphere.Draw(refractionShader);
 
 
 		//////// Ground rendering : simple shader
@@ -974,6 +1001,7 @@ int main(int argc, char * argv[]) {
 		glDisable(GL_BLEND);
 		glDepthMask(GL_TRUE);
 
+		
 
 
 		///////////////////////////// END OF RENDERING /////////////////////////////////
@@ -1110,6 +1138,8 @@ void Do_Movement() {
 	if (keys[GLFW_KEY_DOWN])    camera.ProcessKeyboard(BACKWARD, deltaTime);
 	if (keys[GLFW_KEY_LEFT])    camera.ProcessKeyboard(LEFT, deltaTime);
 	if (keys[GLFW_KEY_RIGHT])    camera.ProcessKeyboard(RIGHT, deltaTime);
+	if (keys[GLFW_KEY_P])    camera.ProcessKeyboard(UP, deltaTime);
+	if (keys[GLFW_KEY_M])    camera.ProcessKeyboard(DOWN, deltaTime);
 }
 
 void createBall() {
@@ -1156,53 +1186,50 @@ void scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset) {
 
 
 GLuint createCubeVAO() {
+	
+	float vertices_cube[] = {
+		-1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
 
-	GLfloat vertices_cube[] = {
-	-1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f,  1.0f, -1.0f,
-	 1.0f,  1.0f, -1.0f,
-	-1.0f,  1.0f, -1.0f,
-	-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
 
-	-1.0f, -1.0f,  1.0f,
-	 1.0f, -1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f,  1.0f,
-	-1.0f, -1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
+		-1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
+		-1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
+		-1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
+		-1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
+		-1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
 
-	-1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f, -1.0f,
-	-1.0f, -1.0f, -1.0f,
-	-1.0f, -1.0f, -1.0f,
-	-1.0f, -1.0f,  1.0f,
-	-1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
+		 1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
+		 1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
+		 1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
+		 1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
+		 1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
 
-	 1.0f,  1.0f,  1.0f,
-	 1.0f,  1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
+		 1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
+		 1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
+		 1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
+		-1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
+		-1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
 
-	-1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f, -1.0f,
-	 1.0f, -1.0f,  1.0f,
-	 1.0f, -1.0f,  1.0f,
-	-1.0f, -1.0f,  1.0f,
-	-1.0f, -1.0f, -1.0f,
-
-	-1.0f,  1.0f, -1.0f,
-	 1.0f,  1.0f, -1.0f,
-	 1.0f,  1.0f,  1.0f,
-	 1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f,  1.0f,
-	-1.0f,  1.0f, -1.0f
-
+		-1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+		 1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+		 1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
+		 1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
+		-1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
+		-1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f
 	};
-
-
 	GLuint VAO_cube, VBO_cube;
 	glGenVertexArrays(1, &VAO_cube);	// Create a VAO (pointer)
 	glBindVertexArray(VAO_cube);		// Use the VAO
@@ -1214,11 +1241,13 @@ GLuint createCubeVAO() {
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_cube), vertices_cube, GL_STATIC_DRAW);
 	// How to interpret datas
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(float)));
 
 	// Unbind the VAO (say that we don't use it anymore...)
 	glBindVertexArray(0);
-
+	glDeleteVertexArrays(1, &VBO_cube);
 	return VAO_cube;
 }
 
@@ -1230,11 +1259,11 @@ GLuint create2DTexture(char const * imName) {
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// Set texture wrapping to GL_REPEAT
-
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); 	// Set texture wrapping to GL_REPEAT
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_REPEAT); // Set texture filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_REPEAT);     // www.opengl-tutorial.org/beginners-tutorials/tutorial-5-a-textured-cube/#what-is-filtering-and-mipmapping-and-how-to-use-them
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_REPEAT); // Set texture filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // Set texture filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);     // www.opengl-tutorial.org/beginners-tutorials/tutorial-5-a-textured-cube/#what-is-filtering-and-mipmapping-and-how-to-use-them
+
+
 
 	int width_im, height_im, n;
 	unsigned char* image = stbi_load(imName, &width_im, &height_im, &n, 3);
@@ -1273,10 +1302,6 @@ GLuint createSkyboxTexture() {
 
 	return texture;
 }
-
-
-
-
 
 
 
@@ -1367,6 +1392,7 @@ GLuint BumpMappingVAO(glm::vec3 pos1, glm::vec3 pos2, glm::vec3 pos3, glm::vec3 
 
 	// Unbind the VAO (say that we don't use it anymore...)
 	glBindVertexArray(0);
+	glDeleteVertexArrays(1, &VBO);
 
 	return VAO;
 }
@@ -1408,6 +1434,7 @@ GLuint createRectVAO() {
 
 	// Unbind the VAO (say that we don't use it anymore...)
 	glBindVertexArray(0);
+	glDeleteVertexArrays(1, &VBO);
 
 	return VAO;
 }
@@ -1512,4 +1539,28 @@ glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]) {
 }
 
 
+void SudoCreateChild(glm::mat4 m2w_noscale, float depth, GLuint VAO_cube, Shader test)
+{
+	if (depth >= 5) {
+		return;
+	}
 
+	glm::mat4 scale = glm::scale(glm::mat4(1), glm::vec3(3/depth, 20/depth, 3/depth));
+	/// Draw the branch
+	test.setMatrix4("Model", glm::translate(glm::mat4(1), glm::vec3(-30, 0, -10)) *  m2w_noscale * scale);
+	test.setVector3f("objectColor", glm::vec3(0.56, 0.19 + depth / 10, 0));
+	glBindVertexArray(VAO_cube);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
+	glBindVertexArray(0);
+
+	/// Recursion for the "children branches"
+	int max_childBranches = 3;
+	for (int i = 0; i < max_childBranches; ++i) {
+		float angle = (2.0f*3.14 / max_childBranches)*i;
+		glm::mat4 rot = glm::rotate(glm::mat4(1), angle, glm::vec3(0, 1, 0)) * glm::rotate(glm::mat4(1), float(3.14 / 4), glm::vec3(1, 0, 0));
+		glm::mat4 trans = glm::translate(glm::mat4(1), glm::vec3(0, (10-depth)/ (depth + 1), 0));
+		/// Recursively create the branches
+
+		SudoCreateChild(glm::translate(glm::mat4(1), glm::vec3(0, 6, 0)) *  rot * trans * m2w_noscale, depth + 1, VAO_cube, test);
+	}
+}
