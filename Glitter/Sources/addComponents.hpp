@@ -9,11 +9,18 @@
 
 class AddComponents {
 public:
-	//btRigidBody* addSphere(float rad, float x, float y, float z, float mass);
-	btRigidBody* AddComponents::addSphere(float rad, float x, float y, float z, float mass);
-	glm::mat4 renderSphere(btRigidBody* sphere);
+
 	void addGround();
-	btDynamicsWorld* AddComponents::init();
-	void simulation();
+	void addBowlingAlley();
+	void addPins();
+	void CleanUp();
+	void Simulation();
+	void CreateBall(GLfloat xLast, GLfloat yLast, bool &firstThrow);
+	void BallRendering(glm::mat4 &matBall);
+	btVector3 BallPosition();
+	btDiscreteDynamicsWorld* init();
+	glm::mat4 bulletMatToOpenGLMat(btScalar	bulletMat[16]);
+	void PinRendering(glm::mat4 &matPin1, glm::mat4 &matPin2, glm::mat4 &matPin3, glm::mat4 &matPin4, glm::mat4 &matPin5,
+		glm::mat4 &matPin6, glm::mat4 &matPin7, glm::mat4 &matPin8, glm::mat4 &matPin9, glm::mat4 &matPin10);
 	
 };
